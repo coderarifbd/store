@@ -102,8 +102,15 @@ const initDb = async () => {
         product_id INT REFERENCES products(id) ON DELETE SET NULL,
         quantity INT NOT NULL,
         purchase_price NUMERIC(10, 2) NOT NULL,
-        selling_price NUMERIC(10, 2) NOT NULL
+        selling_price NUMERIC(10, 2) NOT NULL,
+        purchase_id INT REFERENCES purchases(id) ON DELETE SET NULL
       );
+    `);
+
+    // Migration to add purchase_id column to existing sale_items if missing
+    await client.query(`
+      ALTER TABLE sale_items 
+      ADD COLUMN IF NOT EXISTS purchase_id INT REFERENCES purchases(id) ON DELETE SET NULL;
     `);
 
     // 5. Employee Expenses table
@@ -156,6 +163,9 @@ const initDb = async () => {
     
     // Auto-heal missing purchase logs for products with stock
     await healMissingPurchases(client);
+
+    // Auto-allocate past unallocated sales to specific purchase batches (FIFO)
+    await allocatePastSalesToBatches(client);
   } catch (err) {
     console.error('Error initializing database tables:', err);
     throw err;
@@ -187,6 +197,77 @@ const healMissingPurchases = async (client) => {
     }
   } catch (err) {
     console.error('Error healing missing purchases:', err);
+  }
+};
+
+const allocatePastSalesToBatches = async (client) => {
+  try {
+    // 1. Get all sale_items that have NULL purchase_id
+    const unallocatedRes = await client.query(
+      'SELECT * FROM sale_items WHERE purchase_id IS NULL ORDER BY id ASC'
+    );
+    
+    if (unallocatedRes.rows.length === 0) return;
+    
+    console.log(`Migrating ${unallocatedRes.rows.length} unallocated sale items to specific batches...`);
+    
+    for (const item of unallocatedRes.rows) {
+      // Find available purchases for this product
+      const purchasesRes = await client.query(`
+        SELECT 
+          p.id,
+          p.quantity as original_qty,
+          p.purchase_price,
+          COALESCE(SUM(si.quantity), 0) as consumed_qty
+        FROM purchases p
+        LEFT JOIN sale_items si ON si.purchase_id = p.id
+        WHERE p.product_id = $1
+        GROUP BY p.id, p.purchase_date
+        ORDER BY p.purchase_date ASC, p.id ASC
+      `, [item.product_id]);
+      
+      let remainingToAllocate = parseInt(item.quantity);
+      
+      for (const p of purchasesRes.rows) {
+        const available = parseInt(p.original_qty) - parseInt(p.consumed_qty);
+        if (available > 0) {
+          const consume = Math.min(remainingToAllocate, available);
+          
+          if (consume === remainingToAllocate) {
+            // This sale item fits entirely in this batch
+            await client.query(
+              'UPDATE sale_items SET purchase_id = $1 WHERE id = $2',
+              [p.id, item.id]
+            );
+            remainingToAllocate = 0;
+            break;
+          } else {
+            // It spans multiple batches! Split the sale_item!
+            // First, update the current sale_item to consume the available amount
+            await client.query(
+              'UPDATE sale_items SET quantity = $1, purchase_id = $2 WHERE id = $3',
+              [consume, p.id, item.id]
+            );
+            
+            remainingToAllocate -= consume;
+            
+            // Insert a new sale_item for the remainder (which will be processed in subsequent iterations)
+            const newInsert = await client.query(
+              `INSERT INTO sale_items (sale_id, product_id, quantity, purchase_price, selling_price, purchase_id)
+               VALUES ($1, $2, $3, $4, $5, NULL) RETURNING id`,
+              [item.sale_id, item.product_id, remainingToAllocate, item.purchase_price, item.selling_price]
+            );
+            
+            // Set item.id and item.quantity to the new row so the loop can continue allocating it
+            item.id = newInsert.rows[0].id;
+            item.quantity = remainingToAllocate;
+          }
+        }
+      }
+    }
+    console.log('Past sales migrated to specific batches successfully.');
+  } catch (err) {
+    console.error('Error allocating past sales:', err);
   }
 };
 

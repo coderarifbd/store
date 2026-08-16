@@ -35,7 +35,7 @@ function Sales({ activeView }) {
     try {
       if (!isSilent) setLoading(true);
       if (activeSubTab === 'pos') {
-        const prodRes = await fetch('/api/products');
+        const prodRes = await fetch('/api/products/with-batches');
         if (!prodRes.ok) throw new Error('Failed to load products');
         const prodData = await prodRes.json();
         setProducts(prodData);
@@ -55,60 +55,48 @@ function Sales({ activeView }) {
   };
 
   // Add item to cart
-  const addToCart = (product) => {
-    if (product.stock_quantity <= 0) {
-      alert('দুঃখিত, এই পণ্যটি স্টকে নেই!');
+  const addToCart = (batchItem) => {
+    if (batchItem.batch_qty <= 0) {
+      alert('দুঃখিত, এই ব্যাচটি স্টকে নেই!');
       return;
     }
 
-    const newItem = {
-      product_id: product.id,
-      name: product.name,
-      brand: product.brand,
-      model: product.model,
-      selling_price: parseFloat(product.selling_price || 0),
-      stock: product.stock_quantity,
-      quantity: 1,
-      batches: []
-    };
-
     setCart(prevCart => {
-      const existing = prevCart.find(item => item.product_id === product.id);
+      const existing = prevCart.find(item => 
+        item.product_id === batchItem.id && item.purchase_id === batchItem.purchase_id
+      );
+
       if (existing) {
-        if (existing.quantity >= product.stock_quantity) {
-          alert(`দুঃখিত, এই পণ্যের সর্বোচ্চ উপলব্ধ স্টক ${product.stock_quantity} টি`);
+        if (existing.quantity >= batchItem.batch_qty) {
+          alert(`দুঃখিত, এই ব্যাচে সর্বোচ্চ উপলব্ধ স্টক ${batchItem.batch_qty} টি`);
           return prevCart;
         }
         return prevCart.map(item => 
-          item.product_id === product.id 
+          (item.product_id === batchItem.id && item.purchase_id === batchItem.purchase_id)
             ? { ...item, quantity: item.quantity + 1 }
             : item
         );
       } else {
-        return [...prevCart, newItem];
+        return [...prevCart, {
+          product_id: batchItem.id,
+          name: batchItem.name,
+          brand: batchItem.brand,
+          model: batchItem.model,
+          selling_price: parseFloat(batchItem.selling_price || 0),
+          purchase_id: batchItem.purchase_id,
+          purchase_price: batchItem.purchase_price,
+          batch_qty: batchItem.batch_qty,
+          batch_desc: batchItem.batch_desc,
+          quantity: 1
+        }];
       }
     });
-
-    // Fetch batches in background to ensure POS is instantaneous
-    fetch(`/api/products/${product.id}/batches`)
-      .then(res => {
-        if (res.ok) return res.json();
-        return [];
-      })
-      .then(batches => {
-        setCart(prevCart => prevCart.map(item => 
-          item.product_id === product.id 
-            ? { ...item, batches }
-            : item
-        ));
-      })
-      .catch(err => console.error('Error fetching batches in background:', err));
   };
 
   // Update item quantity in cart
-  const updateQuantity = (productId, newQty, stockLimit) => {
+  const updateQuantity = (productId, purchaseId, newQty, stockLimit) => {
     if (newQty <= 0) {
-      removeFromCart(productId);
+      removeFromCart(productId, purchaseId);
       return;
     }
     if (newQty > stockLimit) {
@@ -116,19 +104,19 @@ function Sales({ activeView }) {
       return;
     }
     setCart(cart.map(item => 
-      item.product_id === productId 
+      (item.product_id === productId && item.purchase_id === purchaseId)
         ? { ...item, quantity: newQty }
         : item
     ));
   };
 
-  const removeFromCart = (productId) => {
-    setCart(cart.filter(item => item.product_id !== productId));
+  const removeFromCart = (productId, purchaseId) => {
+    setCart(cart.filter(item => !(item.product_id === productId && item.purchase_id === purchaseId)));
   };
 
-  const updatePrice = (productId, newPrice) => {
+  const updatePrice = (productId, purchaseId, newPrice) => {
     setCart(cart.map(item => 
-      item.product_id === productId 
+      (item.product_id === productId && item.purchase_id === purchaseId)
         ? { ...item, selling_price: newPrice === '' ? '' : parseFloat(newPrice) }
         : item
     ));
@@ -154,7 +142,8 @@ function Sales({ activeView }) {
         items: cart.map(item => ({
           product_id: item.product_id,
           quantity: item.quantity,
-          selling_price: parseFloat(item.selling_price || 0)
+          selling_price: parseFloat(item.selling_price || 0),
+          purchase_id: item.purchase_id
         }))
       };
 
@@ -227,12 +216,43 @@ function Sales({ activeView }) {
     }
   };
 
-  // Filter products for picker
-  const filteredProducts = products.filter(p => {
+  // Filter products and their active batches for picker
+  const filteredBatches = [];
+  products.forEach(p => {
     const term = searchTerm.toLowerCase();
-    return p.name.toLowerCase().includes(term) || 
+    const matchProduct = p.name.toLowerCase().includes(term) || 
       (p.brand && p.brand.toLowerCase().includes(term)) || 
       (p.model && p.model.toLowerCase().includes(term));
+      
+    if (matchProduct) {
+      if (p.batches && p.batches.length > 0) {
+        p.batches.forEach(b => {
+          filteredBatches.push({
+            id: p.id,
+            name: p.name,
+            brand: p.brand,
+            model: p.model,
+            selling_price: p.selling_price,
+            purchase_id: b.purchase_id,
+            purchase_price: b.purchase_price,
+            batch_qty: b.remaining_qty,
+            batch_desc: `${b.vendor_name || 'ক্রয়'} (${new Date(b.purchase_date).toLocaleDateString('bn-BD')} - কেনা: ৳${b.purchase_price})`
+          });
+        });
+      } else {
+        filteredBatches.push({
+          id: p.id,
+          name: p.name,
+          brand: p.brand,
+          model: p.model,
+          selling_price: p.selling_price,
+          purchase_id: null,
+          purchase_price: p.purchase_price,
+          batch_qty: p.stock_quantity,
+          batch_desc: 'ডিফল্ট ব্যাচ'
+        });
+      }
+    }
   });
 
   return (
@@ -296,35 +316,38 @@ function Sales({ activeView }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProducts.length === 0 ? (
+                    {filteredBatches.length === 0 ? (
                       <tr>
-                        <td colSpan="5" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                        <td colSpan="6" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
                           কোনো পণ্য পাওয়া যায়নি।
                         </td>
                       </tr>
                     ) : (
-                      filteredProducts.map(p => (
-                        <tr key={p.id}>
-                          <td><strong>{p.name}</strong></td>
-                          <td>{p.brand || '-'}</td>
-                          <td>{p.model || '-'}</td>
-                          <td style={{ textAlign: 'right' }}>৳{parseFloat(p.selling_price).toFixed(2)}</td>
+                      filteredBatches.map((b, idx) => (
+                        <tr key={`${b.id}-${b.purchase_id || 'fallback'}-${idx}`}>
+                          <td>
+                            <strong>{b.name}</strong>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--accent-color)', marginTop: '0.15rem' }}>
+                              {b.batch_desc}
+                            </div>
+                          </td>
+                          <td>{b.brand || '-'}</td>
+                          <td>{b.model || '-'}</td>
+                          <td style={{ textAlign: 'right' }}>৳{parseFloat(b.selling_price).toFixed(2)}</td>
                           <td style={{ textAlign: 'center' }}>
                             <span 
-                              className={`badge ${p.stock_quantity <= p.reorder_level ? 'danger' : 'success'}`}
-                              style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}
-                              onClick={() => viewProductBatches(p)}
-                              title="স্টক ব্যাচ ও ক্রয়মূল্য বিবরণী দেখতে ক্লিক করুন"
+                              className={`badge ${b.batch_qty <= 5 ? 'danger' : 'success'}`}
+                              style={{ display: 'inline-flex', alignItems: 'center' }}
                             >
-                              {p.stock_quantity} টি ℹ️
+                              {b.batch_qty} টি
                             </span>
                           </td>
                           <td style={{ textAlign: 'center' }}>
                             <button 
                               className="btn btn-primary" 
                               style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
-                              onClick={() => addToCart(p)}
-                              disabled={p.stock_quantity <= 0}
+                              onClick={() => addToCart(b)}
+                              disabled={b.batch_qty <= 0}
                             >
                               কার্টে নিন
                             </button>
@@ -353,21 +376,19 @@ function Sales({ activeView }) {
               <form onSubmit={handleCheckout}>
                 <div className="cart-items">
                   {cart.map(item => (
-                    <div key={item.product_id} className="cart-item">
+                    <div key={`${item.product_id}-${item.purchase_id}`} className="cart-item">
                       <div className="cart-item-info">
                         <h4>{item.name} {item.brand ? `[${item.brand}]` : ''}</h4>
-                        {item.batches && item.batches.filter(b => b.remaining_qty > 0).length > 0 && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.15rem' }}>
-                            কেনা দাম: {item.batches.filter(b => b.remaining_qty > 0).map(b => `${b.remaining_qty}টি @ ৳${b.purchase_price}`).join(', ')}
-                          </div>
-                        )}
+                        <div style={{ fontSize: '0.75rem', color: 'var(--accent-color)', marginTop: '0.1rem', fontWeight: '500' }}>
+                          ব্যাচ: {item.batch_desc}
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
                           <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>৳</span>
                           <input 
                             type="number" 
                             step="0.01"
                             value={item.selling_price}
-                            onChange={(e) => updatePrice(item.product_id, e.target.value)}
+                            onChange={(e) => updatePrice(item.product_id, item.purchase_id, e.target.value)}
                             style={{ 
                               width: '70px', 
                               padding: '0.1rem 0.3rem', 
@@ -389,20 +410,20 @@ function Sales({ activeView }) {
                             type="button" 
                             className="btn-icon" 
                             style={{ padding: '0.2rem' }}
-                            onClick={() => updateQuantity(item.product_id, item.quantity - 1, item.stock)}
+                            onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity - 1, item.batch_qty)}
                           >
                             <Minus size={14} />
                           </button>
                           <input 
                             type="number" 
                             value={item.quantity}
-                            onChange={(e) => updateQuantity(item.product_id, parseInt(e.target.value || 0), item.stock)}
+                            onChange={(e) => updateQuantity(item.product_id, item.purchase_id, parseInt(e.target.value || 0), item.batch_qty)}
                           />
                           <button 
                             type="button" 
                             className="btn-icon"
                             style={{ padding: '0.2rem' }}
-                            onClick={() => updateQuantity(item.product_id, item.quantity + 1, item.stock)}
+                            onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity + 1, item.batch_qty)}
                           >
                             <Plus size={14} />
                           </button>
@@ -410,7 +431,7 @@ function Sales({ activeView }) {
                         <button 
                           type="button" 
                           className="btn-icon delete"
-                          onClick={() => removeFromCart(item.product_id)}
+                          onClick={() => removeFromCart(item.product_id, item.purchase_id)}
                         >
                           <Trash2 size={16} />
                         </button>

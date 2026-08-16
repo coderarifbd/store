@@ -386,6 +386,53 @@ app.get('/api/products/:id/batches', async (req, res) => {
   }
 });
 
+// Get all products with their active stock batches
+app.get('/api/products/with-batches', async (req, res) => {
+  try {
+    const productsRes = await pool.query('SELECT * FROM products ORDER BY name ASC');
+    const products = productsRes.rows;
+    
+    const batchesRes = await pool.query(`
+      SELECT 
+        p.product_id,
+        p.id as purchase_id,
+        p.purchase_date,
+        p.vendor_name,
+        p.quantity as original_qty,
+        p.purchase_price,
+        (p.quantity - COALESCE(SUM(si.quantity), 0)) as remaining_qty
+      FROM purchases p
+      LEFT JOIN sale_items si ON si.purchase_id = p.id
+      GROUP BY p.product_id, p.id, p.purchase_date, p.vendor_name, p.quantity, p.purchase_price
+      HAVING (p.quantity - COALESCE(SUM(si.quantity), 0)) > 0
+      ORDER BY p.purchase_date ASC, p.id ASC
+    `);
+    const batches = batchesRes.rows;
+    
+    const productsWithBatches = products.map(prod => {
+      const prodBatches = batches
+        .filter(b => b.product_id === prod.id)
+        .map(b => ({
+          purchase_id: b.purchase_id,
+          purchase_date: b.purchase_date,
+          vendor_name: b.vendor_name,
+          original_qty: parseInt(b.original_qty),
+          remaining_qty: parseInt(b.remaining_qty),
+          purchase_price: parseFloat(b.purchase_price)
+        }));
+      return {
+        ...prod,
+        batches: prodBatches
+      };
+    });
+    
+    res.json(productsWithBatches);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching products with batches' });
+  }
+});
+
 
 // ==========================================
 // PURCHASES ENDPOINTS (পণ্য ক্রয়ের হিসাব)
@@ -749,7 +796,7 @@ app.get('/api/sales/:id', async (req, res) => {
 // Log a sale and decrease stock
 app.post('/api/sales', async (req, res) => {
   const { customer_name, customer_phone, discount, items, sale_date } = req.body;
-  // items should be an array of: { product_id, quantity, selling_price }
+  // items should be an array of: { product_id, quantity, selling_price, purchase_id }
   
   if (!items || items.length === 0) {
     return res.status(400).json({ error: 'Sale must contain at least one item' });
@@ -765,7 +812,7 @@ app.post('/api/sales', async (req, res) => {
     
     // 1. Validate stock and calculate prices
     for (const item of items) {
-      const { product_id, quantity, selling_price } = item;
+      const { product_id, quantity, selling_price, purchase_id } = item;
       
       const prodRes = await client.query('SELECT * FROM products WHERE id = $1', [product_id]);
       if (prodRes.rows.length === 0) {
@@ -777,64 +824,97 @@ app.post('/api/sales', async (req, res) => {
         throw new Error(`Insufficient stock for product "${product.name}". Available: ${product.stock_quantity}, Requested: ${quantity}`);
       }
       
-      // Calculate FIFO Cost for this sale item
-      // 1. Get all purchases for this product sorted by date ASC
-      const purchasesRes = await client.query(
-        'SELECT id, quantity, purchase_price FROM purchases WHERE product_id = $1 ORDER BY purchase_date ASC, id ASC',
-        [product_id]
-      );
-      
-      // 2. Get total quantity of this product already sold before this sale
-      const salesRes = await client.query(
-        'SELECT COALESCE(SUM(quantity), 0) as total_sold FROM sale_items WHERE product_id = $1',
-        [product_id]
-      );
-      let totalSoldBefore = parseInt(salesRes.rows[0].total_sold);
-      
-      // 3. Compute cost using FIFO consumption
-      let remainingToSell = quantity;
+      const allocations = []; // Array of { purchase_id, quantity, purchase_price }
       let itemTotalCost = 0;
-      
-      for (const p of purchasesRes.rows) {
-        const pQty = parseInt(p.quantity);
-        if (totalSoldBefore >= pQty) {
-          totalSoldBefore -= pQty; // this lot was fully consumed before
-        } else {
-          const availableInBatch = pQty - totalSoldBefore;
-          totalSoldBefore = 0; // consumed all past sales allocation
+
+      if (purchase_id) {
+        // A. Manual batch selection
+        const pRes = await client.query('SELECT * FROM purchases WHERE id = $1', [purchase_id]);
+        if (pRes.rows.length === 0) {
+          throw new Error(`Selected batch (Purchase ID ${purchase_id}) not found`);
+        }
+        const purchase = pRes.rows[0];
+        
+        // Calculate remaining batch quantity from actual DB sale logs
+        const consumedRes = await client.query(
+          'SELECT COALESCE(SUM(quantity), 0) as consumed FROM sale_items WHERE purchase_id = $1',
+          [purchase_id]
+        );
+        const consumed = parseInt(consumedRes.rows[0].consumed);
+        const remaining = purchase.quantity - consumed;
+        
+        if (remaining < quantity) {
+          throw new Error(`Selected batch "${purchase.vendor_name || 'ক্রয়'}" does not have enough stock. Available: ${remaining}, Requested: ${quantity}`);
+        }
+        
+        itemTotalCost = quantity * parseFloat(purchase.purchase_price);
+        allocations.push({
+          purchase_id,
+          quantity,
+          purchase_price: parseFloat(purchase.purchase_price)
+        });
+      } else {
+        // B. Automated FIFO calculation
+        const purchasesRes = await client.query(
+          'SELECT id, quantity, purchase_price FROM purchases WHERE product_id = $1 ORDER BY purchase_date ASC, id ASC',
+          [product_id]
+        );
+        
+        let remainingToSell = quantity;
+        
+        for (const p of purchasesRes.rows) {
+          // Get consumed count for this specific purchase batch
+          const consumedRes = await client.query(
+            'SELECT COALESCE(SUM(quantity), 0) as consumed FROM sale_items WHERE purchase_id = $1',
+            [p.id]
+          );
+          const consumed = parseInt(consumedRes.rows[0].consumed);
+          const availableInBatch = p.quantity - consumed;
           
-          const consumeQty = Math.min(remainingToSell, availableInBatch);
-          itemTotalCost += consumeQty * parseFloat(p.purchase_price);
-          remainingToSell -= consumeQty;
-          
-          if (remainingToSell <= 0) break;
+          if (availableInBatch > 0) {
+            const consumeQty = Math.min(remainingToSell, availableInBatch);
+            itemTotalCost += consumeQty * parseFloat(p.purchase_price);
+            remainingToSell -= consumeQty;
+            
+            allocations.push({
+              purchase_id: p.id,
+              quantity: consumeQty,
+              purchase_price: parseFloat(p.purchase_price)
+            });
+            
+            if (remainingToSell <= 0) break;
+          }
+        }
+        
+        // Fallback for case where sold quantity exceeds logged purchases (e.g., initial seed stock manual adjustments)
+        if (remainingToSell > 0) {
+          itemTotalCost += remainingToSell * parseFloat(product.purchase_price);
+          allocations.push({
+            purchase_id: null,
+            quantity: remainingToSell,
+            purchase_price: parseFloat(product.purchase_price)
+          });
         }
       }
       
-      // Fallback for case where sold quantity exceeds logged purchases (e.g., initial seed stock)
-      if (remainingToSell > 0) {
-        itemTotalCost += remainingToSell * parseFloat(product.purchase_price);
-      }
-      
-      const weightedPurchasePrice = itemTotalCost / quantity;
       total_amount += parseFloat(selling_price) * quantity;
       total_cost += itemTotalCost;
       
-      processedItems.push({
-        product_id,
-        quantity,
-        purchase_price: weightedPurchasePrice, // True FIFO cost price!
-        selling_price
-      });
+      // Add each allocation to processedItems
+      for (const alloc of allocations) {
+        processedItems.push({
+          product_id,
+          quantity: alloc.quantity,
+          purchase_price: alloc.purchase_price,
+          selling_price,
+          purchase_id: alloc.purchase_id
+        });
+      }
     }
     
     const disc = parseFloat(discount || 0);
     const final_amount = total_amount - disc;
-    
-    // Profit = Total sales revenue - Total cost of products sold - discount
-    // We attribute discount directly to the overall sale profit
     const profit = final_amount - total_cost;
-    
     const sDate = sale_date ? new Date(sale_date) : new Date();
     
     // 2. Insert into sales table
@@ -846,19 +926,26 @@ app.post('/api/sales', async (req, res) => {
     
     const saleId = saleInsert.rows[0].id;
     
-    // 3. Insert items and update stock
+    // 3. Insert items into sale_items table
     for (const pItem of processedItems) {
       await client.query(
-        `INSERT INTO sale_items (sale_id, product_id, quantity, purchase_price, selling_price)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [saleId, pItem.product_id, pItem.quantity, pItem.purchase_price, pItem.selling_price]
+        `INSERT INTO sale_items (sale_id, product_id, quantity, purchase_price, selling_price, purchase_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [saleId, pItem.product_id, pItem.quantity, pItem.purchase_price, pItem.selling_price, pItem.purchase_id]
       );
-      
+    }
+    
+    // Deduct stock from products table using a grouped reduction query to prevent double update issues if same product has multiple batches in sale
+    const productDeductions = {};
+    for (const pItem of processedItems) {
+      productDeductions[pItem.product_id] = (productDeductions[pItem.product_id] || 0) + pItem.quantity;
+    }
+    for (const pId in productDeductions) {
       await client.query(
         `UPDATE products 
          SET stock_quantity = stock_quantity - $1 
          WHERE id = $2`,
-        [pItem.quantity, pItem.product_id]
+        [productDeductions[pId], parseInt(pId)]
       );
     }
     
