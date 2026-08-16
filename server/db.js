@@ -153,11 +153,40 @@ const initDb = async () => {
     }
 
     console.log('Database tables initialized successfully.');
+    
+    // Auto-heal missing purchase logs for products with stock
+    await healMissingPurchases(client);
   } catch (err) {
     console.error('Error initializing database tables:', err);
     throw err;
   } finally {
     client.release();
+  }
+};
+
+const healMissingPurchases = async (client) => {
+  try {
+    const products = await client.query('SELECT * FROM products');
+    for (const prod of products.rows) {
+      const pCheck = await client.query('SELECT COUNT(*) FROM purchases WHERE product_id = $1', [prod.id]);
+      if (parseInt(pCheck.rows[0].count) === 0 && parseInt(prod.stock_quantity) > 0) {
+        await client.query(
+          `INSERT INTO purchases (product_id, quantity, purchase_price, vendor_name, invoice_no, purchase_date)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            prod.id, 
+            prod.stock_quantity, 
+            prod.purchase_price, 
+            'প্রারম্ভিক স্টক (Initial Stock)', 
+            `INIT-${prod.id}`, 
+            prod.created_at || new Date()
+          ]
+        );
+        console.log(`Auto-created initial stock purchase record for product: ${prod.name}`);
+      }
+    }
+  } catch (err) {
+    console.error('Error healing missing purchases:', err);
   }
 };
 

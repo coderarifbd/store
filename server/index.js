@@ -229,16 +229,40 @@ app.get('/api/products', async (req, res) => {
 // Add a product
 app.post('/api/products', async (req, res) => {
   const { name, category, brand, model, purchase_price, selling_price, stock_quantity, reorder_level } = req.body;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+    const result = await client.query(
       `INSERT INTO products (name, category, brand, model, purchase_price, selling_price, stock_quantity, reorder_level)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
       [name, category, brand || '', model || '', purchase_price || 0, selling_price || 0, stock_quantity || 0, reorder_level || 10]
     );
-    res.status(201).json(result.rows[0]);
+    const newProduct = result.rows[0];
+    const qty = parseInt(stock_quantity || 0);
+
+    if (qty > 0) {
+      await client.query(
+        `INSERT INTO purchases (product_id, quantity, purchase_price, vendor_name, invoice_no, purchase_date)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          newProduct.id,
+          qty,
+          purchase_price || 0,
+          'প্রারম্ভিক স্টক (Initial Stock)',
+          `INIT-${newProduct.id}`,
+          newProduct.created_at || new Date()
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json(newProduct);
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
     res.status(500).json({ error: 'Server error adding product' });
+  } finally {
+    client.release();
   }
 });
 
@@ -246,8 +270,10 @@ app.post('/api/products', async (req, res) => {
 app.put('/api/products/:id', async (req, res) => {
   const { id } = req.params;
   const { name, category, brand, model, purchase_price, selling_price, stock_quantity, reorder_level } = req.body;
+  const client = await pool.connect();
   try {
-    const result = await pool.query(
+    await client.query('BEGIN');
+    const result = await client.query(
       `UPDATE products 
        SET name = $1, category = $2, brand = $3, model = $4, purchase_price = $5, selling_price = $6, stock_quantity = $7, reorder_level = $8
        WHERE id = $9 RETURNING *`,
@@ -256,10 +282,47 @@ app.put('/api/products/:id', async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    res.json(result.rows[0]);
+    const updatedProduct = result.rows[0];
+    const qty = parseInt(stock_quantity || 0);
+
+    // Sync INIT purchase record
+    const initNo = `INIT-${id}`;
+    const initCheck = await client.query('SELECT * FROM purchases WHERE invoice_no = $1', [initNo]);
+    
+    if (initCheck.rows.length > 0) {
+      if (qty > 0) {
+        await client.query(
+          `UPDATE purchases 
+           SET quantity = $1, purchase_price = $2 
+           WHERE invoice_no = $3`,
+          [qty, purchase_price, initNo]
+        );
+      } else {
+        await client.query('DELETE FROM purchases WHERE invoice_no = $1', [initNo]);
+      }
+    } else if (qty > 0) {
+      await client.query(
+        `INSERT INTO purchases (product_id, quantity, purchase_price, vendor_name, invoice_no, purchase_date)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [
+          id,
+          qty,
+          purchase_price,
+          'প্রারম্ভিক স্টক (Initial Stock)',
+          initNo,
+          updatedProduct.created_at || new Date()
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    res.json(updatedProduct);
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error(err);
-    res.status(500).json({ error: 'Server error updating product' });
+    res.status(500).json({ error: err.message || 'Server error updating product' });
+  } finally {
+    client.release();
   }
 });
 
@@ -617,6 +680,18 @@ app.delete('/api/purchases/:id', async (req, res) => {
     
     // 3. Delete the purchase record
     await client.query('DELETE FROM purchases WHERE id = $1', [id]);
+
+    // 4. Update product's purchase_price to the latest purchase rate (if any exists)
+    const latestPurchase = await client.query(
+      'SELECT purchase_price FROM purchases WHERE product_id = $1 ORDER BY purchase_date DESC, id DESC LIMIT 1',
+      [product_id]
+    );
+    if (latestPurchase.rows.length > 0) {
+      await client.query(
+        'UPDATE products SET purchase_price = $1 WHERE id = $2',
+        [latestPurchase.rows[0].purchase_price, product_id]
+      );
+    }
     
     await client.query('COMMIT');
     res.json({ message: 'Purchase record deleted successfully' });
