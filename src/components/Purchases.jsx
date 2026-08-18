@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye, AlertTriangle } from 'lucide-react';
+import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye, AlertTriangle, X } from 'lucide-react';
 
 function Purchases({ activeView, userRole }) {
   const [purchases, setPurchases] = useState([]);
@@ -1054,6 +1054,15 @@ function Purchases({ activeView, userRole }) {
       {showInvoiceDetailModal && selectedInvoice && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '600px', padding: '2.5rem' }}>
+            <button 
+              type="button" 
+              className="btn-icon" 
+              style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', color: 'var(--text-muted)' }} 
+              onClick={() => setShowInvoiceDetailModal(false)}
+              title="বন্ধ করুন"
+            >
+              <X size={20} />
+            </button>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem', textAlign: 'center' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>পণ্য ক্রয় চালান (Invoice)</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, AlertTriangle } from 'lucide-react';
+import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, AlertTriangle, X } from 'lucide-react';
 
 function Sales({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('pos'); // 'pos' or 'history'
@@ -797,6 +797,15 @@ function Sales({ activeView, userRole }) {
       {showDetailModal && selectedSaleDetails && (
         <div className="modal-overlay">
           <div id="invoice-print-area" className="modal-content" style={{ maxWidth: '600px', padding: '2.5rem' }}>
+            <button 
+              type="button" 
+              className="btn-icon" 
+              style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', color: 'var(--text-muted)' }} 
+              onClick={() => setShowDetailModal(false)}
+              title="বন্ধ করুন"
+            >
+              <X size={20} />
+            </button>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem', textAlign: 'center' }}>
               <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>ফারদিন ইলেক্ট্রিক্যাল স্টোর ইনভয়েস</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
