@@ -55,6 +55,7 @@ const initDb = async () => {
         selling_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
         stock_quantity INT NOT NULL DEFAULT 0,
         reorder_level INT NOT NULL DEFAULT 10,
+        is_discontinued BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -62,6 +63,11 @@ const initDb = async () => {
     // Migration to add brand column if table already exists
     await client.query(`
       ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100);
+    `);
+
+    // Migration to add is_discontinued column if table already exists
+    await client.query(`
+      ALTER TABLE products ADD COLUMN IF NOT EXISTS is_discontinued BOOLEAN DEFAULT FALSE;
     `);
 
     // 2. Purchases table
@@ -144,14 +150,19 @@ const initDb = async () => {
         username VARCHAR(50) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
         role VARCHAR(20) NOT NULL DEFAULT 'employee',
+        allowed_modules VARCHAR(500) NOT NULL DEFAULT 'dashboard,inventory,purchases,sales',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    // Migration to add role column to existing users table if missing
+    // Migration to add role and allowed_modules columns if missing
     await client.query(`
       ALTER TABLE users 
       ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'employee';
+    `);
+    await client.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS allowed_modules VARCHAR(500) NOT NULL DEFAULT 'dashboard,inventory,purchases,sales';
     `);
 
     // Seed default admin user if none exists
@@ -160,13 +171,18 @@ const initDb = async () => {
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash('admin123', salt);
       await client.query(
-        'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)',
-        ['admin', passwordHash, 'admin']
+        'INSERT INTO users (username, password_hash, role, allowed_modules) VALUES ($1, $2, $3, $4)',
+        ['admin', passwordHash, 'admin', 'dashboard,inventory,purchases,sales,expenses,reports,users']
       );
       console.log('Default admin user seeded successfully.');
     } else {
-      // Ensure the 'admin' user is set to 'admin' role
-      await client.query("UPDATE users SET role = 'admin' WHERE username = 'admin'");
+      // Ensure the 'admin' user is set to 'admin' role and has all allowed_modules
+      await client.query(`
+        UPDATE users 
+        SET role = 'admin', 
+            allowed_modules = 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+        WHERE username = 'admin'
+      `);
     }
 
     console.log('Database tables initialized successfully.');

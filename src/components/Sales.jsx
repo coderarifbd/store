@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye } from 'lucide-react';
+import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, AlertTriangle } from 'lucide-react';
 
 function Sales({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('pos'); // 'pos' or 'history'
@@ -23,6 +23,11 @@ function Sales({ activeView, userRole }) {
   const [showBatchesModal, setShowBatchesModal] = useState(false);
   const [selectedProductBatches, setSelectedProductBatches] = useState([]);
   const [selectedBatchProduct, setSelectedBatchProduct] = useState(null);
+
+  // Custom Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalMsg, setConfirmModalMsg] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
 
   useEffect(() => {
     if (activeView === 'sales') {
@@ -192,15 +197,18 @@ function Sales({ activeView, userRole }) {
   };
 
   const handleDeleteSale = async (id) => {
-    if (!window.confirm(`আপনি কি নিশ্চিতভাবে বিক্রয় ইনভয়েস #${id} ডিলিট করতে চান? এর ফলে ডেটাবেজ থেকে বিক্রির রেকর্ড মুছে যাবে এবং পণ্যের স্টক পুনরুদ্ধার করা হবে!`)) return;
-    try {
-      const res = await fetch(`/api/sales/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete sale invoice');
-      alert('বিক্রয় ইনভয়েস সফলভাবে ডিলিট করা হয়েছে এবং স্টক পুনরুদ্ধার করা হয়েছে।');
-      fetchData();
-    } catch (err) {
-      alert(err.message || 'ইনভয়েস ডিলিট করতে সমস্যা হয়েছে।');
-    }
+    setConfirmModalMsg(`আপনি কি নিশ্চিতভাবে বিক্রয় ইনভয়েস #${id} ডিলিট করতে চান? এর ফলে ডেটাবেজ থেকে বিক্রির রেকর্ড মুছে যাবে এবং পণ্যের স্টক পুনরুদ্ধার করা হবে!`);
+    setConfirmAction(() => async () => {
+      try {
+        const res = await fetch(`/api/sales/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete sale invoice');
+        alert('বিক্রয় ইনভয়েস সফলভাবে ডিলিট করা হয়েছে এবং স্টক পুনরুদ্ধার করা হয়েছে।');
+        fetchData();
+      } catch (err) {
+        alert(err.message || 'ইনভয়েস ডিলিট করতে সমস্যা হয়েছে।');
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const viewProductBatches = async (product) => {
@@ -298,12 +306,68 @@ function Sales({ activeView, userRole }) {
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
+
+              {/* Mobile Search Results Dropdown overlay */}
+              {searchTerm && (
+                <div className="mobile-only-view pos-search-dropdown" style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  backgroundColor: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-md)',
+                  boxShadow: 'var(--shadow-lg)',
+                  zIndex: 100,
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  marginTop: '0.25rem'
+                }}>
+                  {filteredBatches.length === 0 ? (
+                    <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      কোনো পণ্য পাওয়া যায়নি।
+                    </div>
+                  ) : (
+                    filteredBatches.map((b, idx) => (
+                      <div 
+                        key={`${b.id}-${b.purchase_id || 'fallback'}-${idx}`}
+                        style={{
+                          padding: '0.75rem 1rem',
+                          borderBottom: '1px solid var(--border-color)',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => {
+                          addToCart(b);
+                          setSearchTerm('');
+                        }}
+                      >
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 'bold', fontSize: '0.9rem', color: 'var(--text-primary)' }}>{b.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--accent-color)', marginTop: '0.15rem' }}>{b.batch_desc}</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.15rem' }}>
+                            {b.brand || '-'} | {b.model || '-'}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', marginLeft: '1rem' }}>
+                          <div style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>৳{parseFloat(b.selling_price).toFixed(2)}</div>
+                          <span className={`badge ${b.batch_qty <= 5 ? 'danger' : 'success'}`} style={{ fontSize: '0.7rem', padding: '0.15rem 0.35rem', marginTop: '4px', display: 'inline-block' }}>
+                            স্টক: {b.batch_qty} টি
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             {loading ? (
               <div style={{ padding: '2rem', textAlign: 'center' }}>পণ্য লোড হচ্ছে...</div>
             ) : (
-              <div style={{ maxHeight: '520px', overflowY: 'auto' }}>
+              <div className="desktop-only-view" style={{ maxHeight: '520px', overflowY: 'auto' }}>
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -345,11 +409,17 @@ function Sales({ activeView, userRole }) {
                           <td style={{ textAlign: 'center' }}>
                             <button 
                               className="btn btn-primary" 
-                              style={{ padding: '0.3rem 0.6rem', fontSize: '0.8rem' }}
+                              style={{ 
+                                padding: '0.4rem 0.6rem', 
+                                display: 'inline-flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center' 
+                              }}
                               onClick={() => addToCart(b)}
                               disabled={b.batch_qty <= 0}
+                              title="কার্টে যোগ করুন"
                             >
-                              কার্টে নিন
+                              <ShoppingCart size={16} />
                             </button>
                           </td>
                         </tr>
@@ -376,65 +446,135 @@ function Sales({ activeView, userRole }) {
               <form onSubmit={handleCheckout}>
                 <div className="cart-items">
                   {cart.map(item => (
-                    <div key={`${item.product_id}-${item.purchase_id}`} className="cart-item">
-                      <div className="cart-item-info">
-                        <h4>{item.name} {item.brand ? `[${item.brand}]` : ''}</h4>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--accent-color)', marginTop: '0.1rem', fontWeight: '500' }}>
-                          ব্যাচ: {item.batch_desc}
+                    <div key={`${item.product_id}-${item.purchase_id}`} className="cart-item" style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.35rem',
+                      padding: '0.6rem 0',
+                      borderBottom: '1px solid var(--border-color)',
+                      width: '100%',
+                      alignItems: 'stretch',
+                      textAlign: 'left'
+                    }}>
+                      {/* Row 1: Title & Brand (left), Subtotal & Delete (right) */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
+                            {item.brand && (
+                              <span style={{ fontSize: '0.65rem', backgroundColor: 'var(--bg-secondary)', padding: '0.1rem 0.3rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
+                                {item.brand}
+                              </span>
+                            )}
+                          </h4>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginTop: '0.25rem' }}>
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>৳</span>
-                          <input 
-                            type="number" 
-                            step="0.01"
-                            value={item.selling_price}
-                            onChange={(e) => updatePrice(item.product_id, item.purchase_id, e.target.value)}
-                            style={{ 
-                              width: '70px', 
-                              padding: '0.1rem 0.3rem', 
-                              fontSize: '0.85rem', 
-                              border: '1px solid var(--border-color)', 
-                              borderRadius: 'var(--radius-sm)',
-                              backgroundColor: 'var(--bg-primary)',
-                              color: 'var(--text-primary)',
-                              textAlign: 'right'
-                            }}
-                            title="বিক্রয়মূল্য পরিবর্তন করুন"
-                          />
-                          <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>/ টি</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent-color)' }} title="আইটেম সাবটোটাল">
+                            ৳{(parseFloat(item.selling_price || 0) * item.quantity).toFixed(2)}
+                          </span>
+                          <button 
+                            type="button" 
+                            className="btn-icon delete" 
+                            style={{ padding: '0.2rem', color: 'var(--danger)' }}
+                            onClick={() => removeFromCart(item.product_id, item.purchase_id)}
+                            title="কার্ট থেকে বাদ দিন"
+                          >
+                            <Trash2 size={15} />
+                          </button>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        <div className="cart-item-qty">
-                          <button 
-                            type="button" 
-                            className="btn-icon" 
-                            style={{ padding: '0.2rem' }}
-                            onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity - 1, item.batch_qty)}
-                          >
-                            <Minus size={14} />
-                          </button>
-                          <input 
-                            type="number" 
-                            value={item.quantity}
-                            onChange={(e) => updateQuantity(item.product_id, item.purchase_id, parseInt(e.target.value || 0), item.batch_qty)}
-                          />
-                          <button 
-                            type="button" 
-                            className="btn-icon"
-                            style={{ padding: '0.2rem' }}
-                            onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity + 1, item.batch_qty)}
-                          >
-                            <Plus size={14} />
-                          </button>
+
+                      {/* Row 2: Batch (left), Price Editor & Qty Pill (right) */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                          ব্যাচ: {item.batch_desc}
                         </div>
-                        <button 
-                          type="button" 
-                          className="btn-icon delete"
-                          onClick={() => removeFromCart(item.product_id, item.purchase_id)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                          {/* Price Input */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>৳</span>
+                            <input 
+                              type="number" 
+                              step="0.01"
+                              value={item.selling_price}
+                              onChange={(e) => updatePrice(item.product_id, item.purchase_id, e.target.value)}
+                              style={{ 
+                                width: '58px', 
+                                height: '24px', 
+                                padding: 0, 
+                                fontSize: '0.8rem', 
+                                border: '1px solid var(--border-color)', 
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: 'var(--bg-secondary)',
+                                color: 'var(--text-primary)',
+                                textAlign: 'center',
+                                fontWeight: '700',
+                                outline: 'none',
+                                lineHeight: '24px'
+                              }}
+                              title="বিক্রয়মূল্য সংশোধন"
+                            />
+                          </div>
+
+                          {/* Qty Pill Selector */}
+                          <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', height: '24px' }}>
+                            <button 
+                              type="button" 
+                              style={{ 
+                                border: 'none', 
+                                background: 'var(--bg-secondary)', 
+                                color: 'var(--text-primary)', 
+                                width: '22px', 
+                                height: '100%', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                              onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity - 1, item.batch_qty)}
+                            >
+                              <Minus size={10} />
+                            </button>
+                            <input 
+                              type="number" 
+                              value={item.quantity}
+                              onChange={(e) => updateQuantity(item.product_id, item.purchase_id, parseInt(e.target.value || 0), item.batch_qty)}
+                              style={{ 
+                                width: '28px', 
+                                height: '100%', 
+                                padding: 0, 
+                                textAlign: 'center', 
+                                border: 'none',
+                                borderLeft: '1px solid var(--border-color)',
+                                borderRight: '1px solid var(--border-color)',
+                                backgroundColor: 'var(--bg-primary)',
+                                color: 'var(--text-primary)',
+                                fontWeight: '700',
+                                fontSize: '0.85rem',
+                                outline: 'none'
+                              }}
+                            />
+                            <button 
+                              type="button" 
+                              style={{ 
+                                border: 'none', 
+                                background: 'var(--bg-secondary)', 
+                                color: 'var(--text-primary)', 
+                                width: '22px', 
+                                height: '100%', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                cursor: 'pointer',
+                                padding: 0
+                              }}
+                              onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity + 1, item.batch_qty)}
+                            >
+                              <Plus size={10} />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -499,90 +639,166 @@ function Sales({ activeView, userRole }) {
         </div>
       ) : (
         /* History panel */
-        <div className="table-container">
-          {loading ? (
-            <div style={{ padding: '2rem', textAlign: 'center' }}>ইতিহাস লোড হচ্ছে...</div>
-          ) : (
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>ইনভয়েস আইডি</th>
-                  <th>তারিখ</th>
-                  <th>ক্রেতার বিবরণ</th>
-                  <th style={{ textAlign: 'right' }}>ডিসকাউন্ট</th>
-                  <th style={{ textAlign: 'right' }}>সর্বমোট টাকা</th>
-                  <th style={{ textAlign: 'right' }}>অর্জিত লাভ</th>
-                  <th style={{ textAlign: 'center' }}>একশন</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sales.length === 0 ? (
+        <>
+          <div className="table-container desktop-only-view">
+            {loading ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>ইতিহাস লোড হচ্ছে...</div>
+            ) : (
+              <table className="data-table">
+                <thead>
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                      কোনো বিক্রির রেকর্ড পাওয়া যায়নি।
-                    </td>
+                    <th>ইনভয়েস আইডি</th>
+                    <th>তারিখ</th>
+                    <th>ক্রেতার বিবরণ</th>
+                    <th style={{ textAlign: 'right' }}>ডিসকাউন্ট</th>
+                    <th style={{ textAlign: 'right' }}>সর্বমোট টাকা</th>
+                    <th style={{ textAlign: 'right' }}>অর্জিত লাভ</th>
+                    <th style={{ textAlign: 'center' }}>একশন</th>
                   </tr>
-                ) : (
-                  sales.map(sale => {
-                    const date = new Date(sale.sale_date).toLocaleDateString('bn-BD', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    });
-                    return (
-                      <tr key={sale.id}>
-                        <td><strong>#{sale.id}</strong></td>
-                        <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
-                        <td>
-                          <div><strong>{sale.customer_name || 'সাধারণ ক্রেতা'}</strong></div>
-                          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sale.customer_phone || '-'}</div>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>৳{parseFloat(sale.discount).toFixed(2)}</td>
-                        <td style={{ textAlign: 'right' }}><strong>৳{parseFloat(sale.total_amount).toFixed(2)}</strong></td>
-                        <td style={{ textAlign: 'right' }} style={{ color: parseFloat(sale.profit) >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 'bold', textAlign: 'right' }}>
-                          ৳{parseFloat(sale.profit).toFixed(2)}
-                        </td>
-                        <td style={{ textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                            <button 
-                              className="btn-icon" 
-                              style={{ padding: '0.25rem' }} 
-                              onClick={() => viewSaleDetails(sale.id)}
-                              title="ইনভয়েস দেখুন"
-                            >
-                              <Eye size={16} />
-                            </button>
-                            {userRole === 'admin' && (
-                            <button 
-                              type="button"
-                              className="btn-icon delete" 
-                              style={{ padding: '0.25rem' }} 
-                              onClick={() => handleDeleteSale(sale.id)}
-                              title="ইনভয়েস মুছে ফেলুন"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                          )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          )}
-        </div>
+                </thead>
+                <tbody>
+                  {sales.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                        কোনো বিক্রির রেকর্ড পাওয়া যায়নি।
+                      </td>
+                    </tr>
+                  ) : (
+                    sales.map(sale => {
+                      const date = new Date(sale.sale_date).toLocaleDateString('bn-BD', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      });
+                      return (
+                        <tr key={sale.id}>
+                          <td><strong>#{sale.id}</strong></td>
+                          <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
+                          <td>
+                            <div><strong>{sale.customer_name || 'সাধারণ ক্রেতা'}</strong></div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{sale.customer_phone || '-'}</div>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>৳{parseFloat(sale.discount).toFixed(2)}</td>
+                          <td style={{ textAlign: 'right' }}><strong>৳{parseFloat(sale.total_amount).toFixed(2)}</strong></td>
+                          <td style={{ textAlign: 'right' }} style={{ color: parseFloat(sale.profit) >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 'bold', textAlign: 'right' }}>
+                            ৳{parseFloat(sale.profit).toFixed(2)}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                              <button 
+                                className="btn-icon" 
+                                style={{ padding: '0.25rem' }} 
+                                onClick={() => viewSaleDetails(sale.id)}
+                                title="ইনভয়েস দেখুন"
+                              >
+                                <Eye size={16} />
+                              </button>
+                              {userRole === 'admin' && (
+                              <button 
+                                type="button"
+                                className="btn-icon delete" 
+                                style={{ padding: '0.25rem' }} 
+                                onClick={() => handleDeleteSale(sale.id)}
+                                title="ইনভয়েস মুছে ফেলুন"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="mobile-card-list-view">
+            {loading ? (
+              <div style={{ padding: '2rem', textAlign: 'center' }}>ইতিহাস লোড হচ্ছে...</div>
+            ) : sales.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                কোনো বিক্রির রেকর্ড পাওয়া যায়নি।
+              </div>
+            ) : (
+              sales.map(sale => {
+                const date = new Date(sale.sale_date).toLocaleDateString('bn-BD', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                });
+                return (
+                  <div key={sale.id} className="mobile-product-card">
+                    <div className="card-header">
+                      <div className="product-title">
+                        <strong>ইনভয়েস আইডি: #{sale.id}</strong>
+                      </div>
+                      <span className="badge info" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                        বিক্রয় সম্পন্ন
+                      </span>
+                    </div>
+                    <div className="card-body">
+                      <div className="detail-item">
+                        <span>তারিখ:</span>
+                        <strong>{date}</strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>ক্রেতার বিবরণ:</span>
+                        <strong>{sale.customer_name || 'সাধারণ ক্রেতা'} {sale.customer_phone ? `(${sale.customer_phone})` : ''}</strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>ডিসকাউন্ট:</span>
+                        <strong>৳{parseFloat(sale.discount).toFixed(2)}</strong>
+                      </div>
+                      <div className="price-row">
+                        <div className="price-box">
+                          <span className="price-label">মোট আদায়</span>
+                          <span className="price-value" style={{ color: 'var(--accent-color)', fontSize: '1.05rem' }}>৳{parseFloat(sale.total_amount).toFixed(2)}</span>
+                        </div>
+                        <div className="price-box" style={{ borderLeft: '1px solid var(--border-color)' }}>
+                          <span className="price-label">অর্জিত লাভ</span>
+                          <span className="price-value" style={{ color: parseFloat(sale.profit) >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '1.05rem' }}>৳{parseFloat(sale.profit).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card-actions">
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => viewSaleDetails(sale.id)}
+                      >
+                        <Eye size={12} /> বিবরণী
+                      </button>
+                      {userRole === 'admin' && (
+                        <button 
+                          className="btn btn-danger" 
+                          style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          onClick={() => handleDeleteSale(sale.id)}
+                        >
+                          <Trash2 size={12} /> ডিলিট
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
 
       {/* Invoice Detail Modal */}
       {showDetailModal && selectedSaleDetails && (
         <div className="modal-overlay">
-          <div className="modal-content" style={{ maxWidth: '600px', padding: '2.5rem' }}>
+          <div id="invoice-print-area" className="modal-content" style={{ maxWidth: '600px', padding: '2.5rem' }}>
             <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem', textAlign: 'center' }}>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>ইলেক্ট্রিক্যাল স্টোর ইনভয়েস</h2>
+              <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)' }}>ফারদিন ইলেক্ট্রিক্যাল স্টোর ইনভয়েস</h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
                 ইনভয়েস আইডি: #{selectedSaleDetails.sale.id} | তারিখ: {new Date(selectedSaleDetails.sale.sale_date).toLocaleString('bn-BD')}
               </p>
@@ -596,29 +812,48 @@ function Sales({ activeView, userRole }) {
               </div>
             </div>
 
-            <table className="data-table" style={{ fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-              <thead>
-                <tr>
-                  <th>পণ্যের বিবরণ</th>
-                  <th style={{ textAlign: 'center' }}>পরিমাণ</th>
-                  <th style={{ textAlign: 'right' }}>বিক্রয়মূল্য</th>
-                  <th style={{ textAlign: 'right' }}>মোট মূল্য</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedSaleDetails.items.map((item, idx) => (
-                  <tr key={idx}>
-                    <td>
-                      <div><strong>{item.product_name || 'মুছে ফেলা পণ্য'} {item.product_brand ? `[${item.product_brand}]` : ''}</strong></div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.product_model || '-'}</div>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>{item.quantity} টি</td>
-                    <td style={{ textAlign: 'right' }}>৳{parseFloat(item.selling_price).toFixed(2)}</td>
-                    <td style={{ textAlign: 'right' }}>৳{(parseFloat(item.selling_price) * item.quantity).toFixed(2)}</td>
+            {/* Desktop View: Scrollable Table */}
+            <div className="desktop-only-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%', marginBottom: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+              <table className="data-table" style={{ fontSize: '0.9rem', width: '100%', borderCollapse: 'collapse', minWidth: '450px' }}>
+                <thead>
+                  <tr>
+                    <th style={{ padding: '0.75rem' }}>পণ্যের বিবরণ</th>
+                    <th style={{ textAlign: 'center', padding: '0.75rem' }}>পরিমাণ</th>
+                    <th style={{ textAlign: 'right', padding: '0.75rem' }}>বিক্রয়মূল্য</th>
+                    <th style={{ textAlign: 'right', padding: '0.75rem' }}>মোট মূল্য</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {selectedSaleDetails.items.map((item, idx) => (
+                    <tr key={idx}>
+                      <td style={{ padding: '0.75rem' }}>
+                        <div><strong>{item.product_name || 'মুছে ফেলা পণ্য'} {item.product_brand ? `[${item.product_brand}]` : ''}</strong></div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.product_model || '-'}</div>
+                      </td>
+                      <td style={{ textAlign: 'center', padding: '0.75rem' }}>{item.quantity} টি</td>
+                      <td style={{ textAlign: 'right', padding: '0.75rem' }}>৳{parseFloat(item.selling_price).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', padding: '0.75rem' }}>৳{(parseFloat(item.selling_price) * item.quantity).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile View: Card List (No Scrollbars) */}
+            <div className="mobile-only-view" style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {selectedSaleDetails.items.map((item, idx) => (
+                <div key={idx} style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-primary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                    <span>{item.product_name || 'মুছে ফেলা পণ্য'}</span>
+                    <span style={{ color: 'var(--accent-color)' }}>৳{(parseFloat(item.selling_price) * item.quantity).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    <span>ব্র্যান্ড: {item.product_brand || '-'} {item.product_model ? `(${item.product_model})` : ''}</span>
+                    <span>{item.quantity} টি &times; ৳{parseFloat(item.selling_price).toFixed(2)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
 
             {/* Calculations summary */}
             <div style={{ width: '220px', marginLeft: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem', fontSize: '0.95rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
@@ -719,6 +954,42 @@ function Sales({ activeView, userRole }) {
                 onClick={() => setShowBatchesModal(false)}
               >
                 বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }}>
+            <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>
+              <AlertTriangle size={48} style={{ margin: '0 auto' }} />
+            </div>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', fontWeight: '700' }}>আপনি কি নিশ্চিত?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+              {confirmModalMsg}
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
+                }}
+              >
+                বাতিল করুন
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={() => {
+                  if (confirmAction) confirmAction();
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
+                }}
+              >
+                হ্যাঁ, ডিলিট করুন
               </button>
             </div>
           </div>

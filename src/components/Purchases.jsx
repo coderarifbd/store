@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye } from 'lucide-react';
+import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye, AlertTriangle } from 'lucide-react';
 
 function Purchases({ activeView, userRole }) {
   const [purchases, setPurchases] = useState([]);
@@ -11,6 +11,11 @@ function Purchases({ activeView, userRole }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [productSearchTerm, setProductSearchTerm] = useState('');
   const [showProductDropdown, setShowProductDropdown] = useState(false);
+
+  // Custom Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalMsg, setConfirmModalMsg] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
 
   // Form modal
   const [showAddModal, setShowAddModal] = useState(false);
@@ -237,26 +242,32 @@ function Purchases({ activeView, userRole }) {
   };
 
   const handleDeletePurchase = async (id) => {
-    if (!window.confirm('আপনি কি নিশ্চিতভাবে এই ক্রয় হিস্ট্রি ডিলিট করতে চান? এর ফলে ইনভেন্টরি স্টক থেকে এই পরিমাণ পণ্য কমে যাবে!')) return;
-    try {
-      const res = await fetch(`/api/purchases/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete purchase record');
-      fetchData();
-    } catch (err) {
-      alert(err.message || 'ক্রয় ডিলিট করতে সমস্যা হয়েছে।');
-    }
+    setConfirmModalMsg('আপনি কি নিশ্চিতভাবে এই ক্রয় হিস্ট্রি ডিলিট করতে চান? এর ফলে ইনভেন্টরি স্টক থেকে এই পরিমাণ পণ্য কমে যাবে!');
+    setConfirmAction(() => async () => {
+      try {
+        const res = await fetch(`/api/purchases/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete purchase record');
+        fetchData();
+      } catch (err) {
+        alert(err.message || 'ক্রয় ডিলিট করতে সমস্যা হয়েছে।');
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const handleDeleteInvoice = async (invoiceNo) => {
-    if (!window.confirm(`আপনি কি নিশ্চিতভাবে সম্পূর্ণ চালান #${invoiceNo} ডিলিট করতে চান? এর ফলে এই চালানের সব পণ্যের স্টক ডেটাবেজ থেকে পুনরুদ্ধার করা হবে!`)) return;
-    try {
-      const res = await fetch(`/api/purchases/invoice/${invoiceNo}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete purchase invoice');
-      alert('ক্রয় চালানটি সফলভাবে ডিলিট করা হয়েছে এবং স্টক এডজাস্ট করা হয়েছে।');
-      fetchData();
-    } catch (err) {
-      alert(err.message || 'চালান ডিলিট করতে সমস্যা হয়েছে।');
-    }
+    setConfirmModalMsg(`আপনি কি নিশ্চিতভাবে সম্পূর্ণ চালান #${invoiceNo} ডিলিট করতে চান? এর ফলে এই চালানের সব পণ্যের স্টক ডেটাবেজ থেকে পুনরুদ্ধার করা হবে!`);
+    setConfirmAction(() => async () => {
+      try {
+        const res = await fetch(`/api/purchases/invoice/${invoiceNo}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete purchase invoice');
+        alert('ক্রয় চালানটি সফলভাবে ডিলিট করা হয়েছে এবং স্টক এডজাস্ট করা হয়েছে।');
+        fetchData();
+      } catch (err) {
+        alert(err.message || 'চালান ডিলিট করতে সমস্যা হয়েছে।');
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const openEditInvoiceModal = (invoice) => {
@@ -285,22 +296,25 @@ function Purchases({ activeView, userRole }) {
   };
 
   const deleteItemFromInvoice = async (purchaseId) => {
-    if (!window.confirm('আপনি কি নিশ্চিতভাবে এই পণ্যটি এই চালান থেকে বাদ দিতে চান? এর ফলে ইনভেন্টরি স্টক থেকে এই পরিমাণ পণ্য কমে যাবে!')) return;
-    try {
-      const res = await fetch(`/api/purchases/${purchaseId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete item');
-      
-      const updatedItems = editInvoiceItems.filter(item => item.id !== purchaseId);
-      setEditInvoiceItems(updatedItems);
-      
-      fetchData();
-      
-      if (updatedItems.length === 0) {
-        setShowEditInvoiceModal(false);
+    setConfirmModalMsg('আপনি কি নিশ্চিতভাবে এই পণ্যটি এই চালান থেকে বাদ দিতে চান? এর ফলে ইনভেন্টরি স্টক থেকে এই পরিমাণ পণ্য কমে যাবে!');
+    setConfirmAction(() => async () => {
+      try {
+        const res = await fetch(`/api/purchases/${purchaseId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete item');
+        
+        const updatedItems = editInvoiceItems.filter(item => item.id !== purchaseId);
+        setEditInvoiceItems(updatedItems);
+        
+        fetchData();
+        
+        if (updatedItems.length === 0) {
+          setShowEditInvoiceModal(false);
+        }
+      } catch (err) {
+        alert(err.message || 'পণ্যটি বাদ দিতে সমস্যা হয়েছে।');
       }
-    } catch (err) {
-      alert(err.message || 'পণ্যটি বাদ দিতে সমস্যা হয়েছে।');
-    }
+    });
+    setShowConfirmModal(true);
   };
 
   const addItemToInvoice = async () => {
@@ -393,12 +407,14 @@ function Purchases({ activeView, userRole }) {
 
   const selectedProduct = products.find(p => p.id.toString() === formData.product_id);
   const filteredDropdownProducts = products.filter(p => {
+    if (p.is_discontinued) return false;
     const text = `${p.name} ${p.brand || ''} ${p.model || ''}`.toLowerCase();
     return text.includes(productSearchTerm.toLowerCase());
   });
 
   const selectedNewProduct = products.find(p => p.id.toString() === newItemData.product_id);
   const filteredNewDropdownProducts = products.filter(p => {
+    if (p.is_discontinued) return false;
     const text = `${p.name} ${p.brand || ''} ${p.model || ''}`.toLowerCase();
     return text.includes(newItemSearchTerm.toLowerCase());
   });
@@ -474,147 +490,293 @@ function Purchases({ activeView, userRole }) {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem' }}>ক্রয় তথ্য লোড হচ্ছে...</div>
       ) : activeSubTab === 'invoices' ? (
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>চালান নং</th>
-                <th>তারিখ</th>
-                <th>বিক্রেতা/সাপ্লায়ার</th>
-                <th style={{ textAlign: 'center' }}>পণ্যের সংখ্যা</th>
-                <th style={{ textAlign: 'right' }}>মোট মূল্য</th>
-                <th style={{ textAlign: 'center' }}>অ্যাকশন</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoicesList.length === 0 ? (
+        <>
+          <div className="table-container desktop-only-view">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    কোনো ক্রয়ের চালান পাওয়া যায়নি।
-                  </td>
+                  <th>চালান নং</th>
+                  <th>তারিখ</th>
+                  <th>বিক্রেতা/সাপ্লায়ার</th>
+                  <th style={{ textAlign: 'center' }}>পণ্যের সংখ্যা</th>
+                  <th style={{ textAlign: 'right' }}>মোট মূল্য</th>
+                  <th style={{ textAlign: 'center' }}>অ্যাকশন</th>
                 </tr>
-              ) : (
-                invoicesList.map((invoice) => {
-                  const date = new Date(invoice.purchase_date).toLocaleDateString('bn-BD', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  });
-                  return (
-                    <tr key={invoice.invoice_no}>
-                      <td><strong>#{invoice.invoice_no}</strong></td>
-                      <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
-                      <td>{invoice.vendor_name}</td>
-                      <td style={{ textAlign: 'center' }}><span className="badge info">{invoice.items_count} টি পণ্য</span></td>
-                      <td style={{ textAlign: 'right' }}><strong>৳{invoice.total_cost.toFixed(2)}</strong></td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                          <button 
-                            className="btn-icon" 
-                            style={{ padding: '0.25rem' }} 
-                            onClick={() => {
-                              setSelectedInvoice(invoice);
-                              setShowInvoiceDetailModal(true);
-                            }}
-                            title="চালান দেখুন"
-                          >
-                            <Eye size={16} />
-                          </button>
-                          <button 
-                            className="btn-icon" 
-                            style={{ padding: '0.25rem' }} 
-                            onClick={() => openEditInvoiceModal(invoice)}
-                            title="চালান সংশোধন করুন"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          {userRole === 'admin' && (
-                          <button 
-                            className="btn-icon delete" 
-                            style={{ padding: '0.25rem' }} 
-                            onClick={() => handleDeleteInvoice(invoice.invoice_no)}
-                            title="চালান মুছে ফেলুন"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        )}
+              </thead>
+              <tbody>
+                {invoicesList.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      কোনো ক্রয়ের চালান পাওয়া যায়নি।
+                    </td>
+                  </tr>
+                ) : (
+                  invoicesList.map((invoice) => {
+                    const date = new Date(invoice.purchase_date).toLocaleDateString('bn-BD', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    });
+                    return (
+                      <tr key={invoice.invoice_no}>
+                        <td><strong>#{invoice.invoice_no}</strong></td>
+                        <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
+                        <td>{invoice.vendor_name}</td>
+                        <td style={{ textAlign: 'center' }}><span className="badge info">{invoice.items_count} টি পণ্য</span></td>
+                        <td style={{ textAlign: 'right' }}><strong>৳{invoice.total_cost.toFixed(2)}</strong></td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                            <button 
+                              className="btn-icon" 
+                              style={{ padding: '0.25rem' }} 
+                              onClick={() => {
+                                setSelectedInvoice(invoice);
+                                setShowInvoiceDetailModal(true);
+                              }}
+                              title="চালান দেখুন"
+                            >
+                              <Eye size={16} />
+                            </button>
+                            <button 
+                              className="btn-icon" 
+                              style={{ padding: '0.25rem' }} 
+                              onClick={() => openEditInvoiceModal(invoice)}
+                              title="চালান সংশোধন করুন"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            {userRole === 'admin' && (
+                            <button 
+                              className="btn-icon delete" 
+                              style={{ padding: '0.25rem' }} 
+                              onClick={() => handleDeleteInvoice(invoice.invoice_no)}
+                              title="চালান মুছে ফেলুন"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mobile-card-list-view">
+            {invoicesList.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                কোনো ক্রয়ের চালান পাওয়া যায়নি।
+              </div>
+            ) : (
+              invoicesList.map((invoice) => {
+                const date = new Date(invoice.purchase_date).toLocaleDateString('bn-BD', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                });
+                return (
+                  <div key={invoice.invoice_no} className="mobile-product-card">
+                    <div className="card-header">
+                      <div className="product-title">
+                        <strong>চালান নং: #{invoice.invoice_no}</strong>
+                      </div>
+                      <span className="badge info" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                        {invoice.items_count} টি পণ্য
+                      </span>
+                    </div>
+                    <div className="card-body">
+                      <div className="detail-item">
+                        <span>তারিখ:</span>
+                        <strong>{date}</strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>বিক্রেতা/সাপ্লায়ার:</span>
+                        <strong>{invoice.vendor_name}</strong>
+                      </div>
+                      <div className="price-row" style={{ justifyContent: 'center' }}>
+                        <div className="price-box">
+                          <span className="price-label">চালানের মোট মূল্য</span>
+                          <span className="price-value" style={{ fontSize: '1.1rem' }}>৳{invoice.total_cost.toFixed(2)}</span>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </div>
+                    </div>
+                    <div className="card-actions">
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => {
+                          setSelectedInvoice(invoice);
+                          setShowInvoiceDetailModal(true);
+                        }}
+                      >
+                        <Eye size={12} /> বিবরণী
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => openEditInvoiceModal(invoice)}
+                      >
+                        <Edit2 size={12} /> সংশোধন
+                      </button>
+                      {userRole === 'admin' && (
+                        <button 
+                          className="btn btn-danger" 
+                          style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          onClick={() => handleDeleteInvoice(invoice.invoice_no)}
+                        >
+                          <Trash2 size={12} /> ডিলিট
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
       ) : (
-        <div className="table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>তারিখ</th>
-                <th>পণ্যের নাম</th>
-                <th>ক্যাটাগরি</th>
-                <th>ব্র্যান্ড</th>
-                <th>বিক্রেতা/সাপ্লায়ার</th>
-                <th style={{ textAlign: 'center' }}>পরিমাণ</th>
-                <th style={{ textAlign: 'right' }}>একক মূল্য</th>
-                <th style={{ textAlign: 'right' }}>মোট মূল্য</th>
-                <th style={{ textAlign: 'center' }}>অ্যাকশন</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredPurchases.length === 0 ? (
+        <>
+          <div className="table-container desktop-only-view">
+            <table className="data-table">
+              <thead>
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                    কোনো ক্রয়ের রেকর্ড পাওয়া যায়নি।
-                  </td>
+                  <th>তারিখ</th>
+                  <th>পণ্যের নাম</th>
+                  <th>ক্যাটাগরি</th>
+                  <th>ব্র্যান্ড</th>
+                  <th>বিক্রেতা/সাপ্লায়ার</th>
+                  <th style={{ textAlign: 'center' }}>পরিমাণ</th>
+                  <th style={{ textAlign: 'right' }}>একক মূল্য</th>
+                  <th style={{ textAlign: 'right' }}>মোট মূল্য</th>
+                  <th style={{ textAlign: 'center' }}>অ্যাকশন</th>
                 </tr>
-              ) : (
-                filteredPurchases.map((purchase) => {
-                  const date = new Date(purchase.purchase_date).toLocaleDateString('bn-BD', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  });
-                  const totalVal = parseFloat(purchase.quantity) * parseFloat(purchase.purchase_price);
-                  return (
-                    <tr key={purchase.id}>
-                      <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
-                      <td><strong>{purchase.product_name || 'মুছে ফেলা পণ্য'}</strong></td>
-                      <td><span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{purchase.product_category}</span></td>
-                      <td><span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{purchase.product_brand || '-'}</span></td>
-                      <td>{purchase.vendor_name || 'সাধারণ বিক্রেতা'}</td>
-                      <td style={{ textAlign: 'center' }}><span className="badge info">{purchase.quantity} টি</span></td>
-                      <td style={{ textAlign: 'right' }}>৳{parseFloat(purchase.purchase_price).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}><strong>৳{totalVal.toFixed(2)}</strong></td>
-                      <td style={{ textAlign: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
-                          <button 
-                            className="btn-icon" 
-                            style={{ padding: '0.25rem' }} 
-                            onClick={() => openEditModal(purchase)}
-                            title="সম্পাদনা করুন"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                          <button 
-                            className="btn-icon delete" 
-                            style={{ padding: '0.25rem' }} 
-                            onClick={() => handleDeletePurchase(purchase.id)}
-                            title="মুছে ফেলুন"
-                          >
-                            <Trash2 size={14} />
-                          </button>
+              </thead>
+              <tbody>
+                {filteredPurchases.length === 0 ? (
+                  <tr>
+                    <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                      কোনো ক্রয়ের রেকর্ড পাওয়া যায়নি।
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPurchases.map((purchase) => {
+                    const date = new Date(purchase.purchase_date).toLocaleDateString('bn-BD', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    });
+                    const totalVal = parseFloat(purchase.quantity) * parseFloat(purchase.purchase_price);
+                    return (
+                      <tr key={purchase.id}>
+                        <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
+                        <td><strong>{purchase.product_name || 'মুছে ফেলা পণ্য'}</strong></td>
+                        <td><span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{purchase.product_category}</span></td>
+                        <td><span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{purchase.product_brand || '-'}</span></td>
+                        <td>{purchase.vendor_name || 'সাধারণ বিক্রেতা'}</td>
+                        <td style={{ textAlign: 'center' }}><span className="badge info">{purchase.quantity} টি</span></td>
+                        <td style={{ textAlign: 'right' }}>৳{parseFloat(purchase.purchase_price).toFixed(2)}</td>
+                        <td style={{ textAlign: 'right' }}><strong>৳{totalVal.toFixed(2)}</strong></td>
+                        <td style={{ textAlign: 'center' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                            <button 
+                              className="btn-icon" 
+                              style={{ padding: '0.25rem' }} 
+                              onClick={() => openEditModal(purchase)}
+                              title="সম্পাদনা করুন"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                            <button 
+                              className="btn-icon delete" 
+                              style={{ padding: '0.25rem' }} 
+                              onClick={() => handleDeletePurchase(purchase.id)}
+                              title="মুছে ফেলুন"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mobile-card-list-view">
+            {filteredPurchases.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                কোনো ক্রয়ের রেকর্ড পাওয়া যায়নি।
+              </div>
+            ) : (
+              filteredPurchases.map((purchase) => {
+                const date = new Date(purchase.purchase_date).toLocaleDateString('bn-BD', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                });
+                const totalVal = parseFloat(purchase.quantity) * parseFloat(purchase.purchase_price);
+                return (
+                  <div key={purchase.id} className="mobile-product-card">
+                    <div className="card-header">
+                      <div className="product-title">
+                        <strong>{purchase.product_name || 'মুছে ফেলা পণ্য'}</strong>
+                        {purchase.product_brand && <span className="product-brand"> ({purchase.product_brand})</span>}
+                      </div>
+                      <span className="badge info" style={{ fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}>
+                        পরিমাণ: {purchase.quantity} টি
+                      </span>
+                    </div>
+                    <div className="card-body">
+                      <div className="detail-item">
+                        <span>ক্রয় তারিখ:</span>
+                        <strong>{date}</strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>ক্যাটাগরি:</span>
+                        <strong>{purchase.product_category}</strong>
+                      </div>
+                      <div className="detail-item">
+                        <span>বিক্রেতা/সাপ্লায়ার:</span>
+                        <strong>{purchase.vendor_name || 'সাধারণ বিক্রেতা'}</strong>
+                      </div>
+                      <div className="price-row">
+                        <div className="price-box">
+                          <span className="price-label">একক ক্রয়মূল্য</span>
+                          <span className="price-value">৳{parseFloat(purchase.purchase_price).toFixed(2)}</span>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        <div className="price-box" style={{ borderLeft: '1px solid var(--border-color)' }}>
+                          <span className="price-label">মোট ক্রয়মূল্য</span>
+                          <span className="price-value">৳{totalVal.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card-actions">
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => openEditModal(purchase)}
+                      >
+                        <Edit2 size={12} /> এডিট
+                      </button>
+                      <button 
+                        className="btn btn-danger" 
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => handleDeletePurchase(purchase.id)}
+                      >
+                        <Trash2 size={12} /> ডিলিট
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
       )}
 
       {/* Add Purchase Modal */}
@@ -902,29 +1064,46 @@ function Purchases({ activeView, userRole }) {
               </p>
             </div>
 
-            <div style={{ marginBottom: '1.5rem' }}>
-              <table className="data-table" style={{ fontSize: '0.9rem' }}>
+            {/* Desktop View: Scrollable Table */}
+            <div className="desktop-only-view" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', maxWidth: '100%', marginBottom: '1.5rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+              <table className="data-table" style={{ fontSize: '0.9rem', width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
                 <thead>
                   <tr>
-                    <th>পণ্যের নাম</th>
-                    <th>ব্র্যান্ড</th>
-                    <th style={{ textAlign: 'center' }}>পরিমাণ</th>
-                    <th style={{ textAlign: 'right' }}>একক ক্রয়মূল্য</th>
-                    <th style={{ textAlign: 'right' }}>মোট মূল্য</th>
+                    <th style={{ padding: '0.75rem' }}>পণ্যের নাম</th>
+                    <th style={{ padding: '0.75rem' }}>ব্র্যান্ড</th>
+                    <th style={{ textAlign: 'center', padding: '0.75rem' }}>পরিমাণ</th>
+                    <th style={{ textAlign: 'right', padding: '0.75rem' }}>একক মূল্য</th>
+                    <th style={{ textAlign: 'right', padding: '0.75rem' }}>মোট মূল্য</th>
                   </tr>
                 </thead>
                 <tbody>
                   {selectedInvoice.items.map((item, idx) => (
                     <tr key={idx}>
-                      <td>{item.product_name}</td>
-                      <td>{item.product_brand || '-'}</td>
-                      <td style={{ textAlign: 'center' }}>{item.quantity} টি</td>
-                      <td style={{ textAlign: 'right' }}>৳{parseFloat(item.purchase_price).toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}>৳{(item.quantity * item.purchase_price).toFixed(2)}</td>
+                      <td style={{ padding: '0.75rem' }}>{item.product_name}</td>
+                      <td style={{ padding: '0.75rem' }}>{item.product_brand || '-'}</td>
+                      <td style={{ textAlign: 'center', padding: '0.75rem' }}>{item.quantity} টি</td>
+                      <td style={{ textAlign: 'right', padding: '0.75rem' }}>৳{parseFloat(item.purchase_price).toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', padding: '0.75rem' }}>৳{(item.quantity * item.purchase_price).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mobile View: Card List (No Scrollbars) */}
+            <div className="mobile-only-view" style={{ marginBottom: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {selectedInvoice.items.map((item, idx) => (
+                <div key={idx} style={{ padding: '0.75rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', backgroundColor: 'var(--bg-primary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: '700', fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.25rem' }}>
+                    <span>{item.product_name}</span>
+                    <span style={{ color: 'var(--accent-color)' }}>৳{(item.quantity * item.purchase_price).toFixed(2)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                    <span>ব্র্যান্ড: {item.product_brand || '-'}</span>
+                    <span>{item.quantity} টি &times; ৳{parseFloat(item.purchase_price).toFixed(2)}</span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', fontWeight: 'bold' }}>
@@ -1144,6 +1323,42 @@ function Purchases({ activeView, userRole }) {
                 <button type="submit" className="btn btn-primary">চালান আপডেট করুন</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }}>
+            <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>
+              <AlertTriangle size={48} style={{ margin: '0 auto' }} />
+            </div>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', fontWeight: '700' }}>আপনি কি নিশ্চিত?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+              {confirmModalMsg}
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
+                }}
+              >
+                বাতিল করুন
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={() => {
+                  if (confirmAction) confirmAction();
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
+                }}
+              >
+                হ্যাঁ, ডিলিট করুন
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Edit2, Trash2, X, AlertCircle } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, X, AlertCircle, AlertTriangle } from 'lucide-react';
 
 const CATEGORIES = [
   'তার ও ক্যাবল (Cables & Wires)',
@@ -13,7 +13,7 @@ const CATEGORIES = [
   'অন্যান্য (Others)'
 ];
 
-function Inventory({ activeView, userRole }) {
+function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTerm }) {
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
   const [newBrandName, setNewBrandName] = useState('');
@@ -28,7 +28,13 @@ function Inventory({ activeView, userRole }) {
   // Search and Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
+  const [selectedBrand, setSelectedBrand] = useState('');
   const [showLowStockOnly, setShowLowStockOnly] = useState(false);
+
+  // Custom Confirmation Modal State
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalMsg, setConfirmModalMsg] = useState('');
+  const [confirmAction, setConfirmAction] = useState(null);
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -48,8 +54,18 @@ function Inventory({ activeView, userRole }) {
     purchase_price: '',
     selling_price: '',
     stock_quantity: 0,
-    reorder_level: 10
+    reorder_level: 10,
+    is_discontinued: false
   });
+
+  useEffect(() => {
+    if (initialSearchTerm) {
+      setSearchTerm(initialSearchTerm);
+      if (setInitialSearchTerm) {
+        setInitialSearchTerm('');
+      }
+    }
+  }, [initialSearchTerm, setInitialSearchTerm]);
 
   useEffect(() => {
     if (activeView === 'inventory') {
@@ -93,19 +109,22 @@ function Inventory({ activeView, userRole }) {
   };
 
   const handleDeleteBrand = async (brandId, brandName) => {
-    if (!window.confirm(`আপনি কি নিশ্চিতভাবে "${brandName}" ব্র্যান্ডটি ডিলিট করতে চান?`)) return;
-    try {
-      const res = await fetch(`/api/brands/${brandId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete brand');
-      
-      // Update local state
-      setBrands(brands.filter(b => b.id !== brandId));
-      if (formData.brand === brandName) {
-        setFormData(prev => ({ ...prev, brand: '' }));
+    setConfirmModalMsg(`আপনি কি নিশ্চিতভাবে "${brandName}" ব্র্যান্ডটি ডিলিট করতে চান?`);
+    setConfirmAction(() => async () => {
+      try {
+        const res = await fetch(`/api/brands/${brandId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete brand');
+        
+        // Update local state
+        setBrands(brands.filter(b => b.id !== brandId));
+        if (formData.brand === brandName) {
+          setFormData(prev => ({ ...prev, brand: '' }));
+        }
+      } catch (err) {
+        alert(err.message || 'ব্র্যান্ড ডিলিট করতে সমস্যা হয়েছে।');
       }
-    } catch (err) {
-      alert(err.message || 'ব্র্যান্ড ডিলিট করতে সমস্যা হয়েছে।');
-    }
+    });
+    setShowConfirmModal(true);
   };
 
   const handleUpdateBrand = async (brandId) => {
@@ -151,10 +170,12 @@ function Inventory({ activeView, userRole }) {
   };
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     setFormData({
       ...formData,
-      [name]: name === 'stock_quantity' || name === 'reorder_level' 
+      [name]: type === 'checkbox'
+        ? checked
+        : name === 'stock_quantity' || name === 'reorder_level' 
         ? (value === '' ? '' : parseInt(value))
         : name === 'purchase_price' || name === 'selling_price'
         ? (value === '' ? '' : parseFloat(value))
@@ -171,7 +192,8 @@ function Inventory({ activeView, userRole }) {
       purchase_price: '',
       selling_price: '',
       stock_quantity: 0,
-      reorder_level: 10
+      reorder_level: 10,
+      is_discontinued: false
     });
     setShowNewBrandInput(false);
     setNewBrandName('');
@@ -192,7 +214,8 @@ function Inventory({ activeView, userRole }) {
       purchase_price: product.purchase_price,
       selling_price: product.selling_price,
       stock_quantity: product.stock_quantity,
-      reorder_level: product.reorder_level
+      reorder_level: product.reorder_level,
+      is_discontinued: product.is_discontinued || false
     });
     setShowNewBrandInput(false);
     setNewBrandName('');
@@ -250,14 +273,17 @@ function Inventory({ activeView, userRole }) {
   };
 
   const handleDeleteProduct = async (id) => {
-    if (!window.confirm('আপনি কি নিশ্চিতভাবে এই পণ্যটি ডিলিট করতে চান? এর সাথে সম্পর্কিত সমস্ত ক্রয়-বিক্রয়ের তথ্য মুছে যেতে পারে!')) return;
-    try {
-      const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete product');
-      fetchProducts();
-    } catch (err) {
-      alert(err.message || 'পণ্য ডিলিট করতে সমস্যা হয়েছে');
-    }
+    setConfirmModalMsg('আপনি কি নিশ্চিতভাবে এই পণ্যটি ডিলিট করতে চান? এর সাথে সম্পর্কিত সমস্ত ক্রয়-বিক্রয়ের তথ্য মুছে যেতে পারে!');
+    setConfirmAction(() => async () => {
+      try {
+        const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete product');
+        fetchProducts();
+      } catch (err) {
+        alert(err.message || 'পণ্য ডিলিট করতে সমস্যা হয়েছে');
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const viewProductBatches = async (product) => {
@@ -273,6 +299,11 @@ function Inventory({ activeView, userRole }) {
     }
   };
 
+  // Get all unique brand names from products
+  const uniqueBrands = Array.from(
+    new Set(products.map(p => p.brand).filter(b => b && b.trim() !== ''))
+  ).sort();
+
   // Filter products
   const filteredProducts = products.filter(product => {
     const matchesSearch = 
@@ -281,9 +312,10 @@ function Inventory({ activeView, userRole }) {
       (product.model && product.model.toLowerCase().includes(searchTerm.toLowerCase()));
       
     const matchesCategory = selectedCategory === '' || product.category === selectedCategory;
+    const matchesBrand = selectedBrand === '' || product.brand === selectedBrand;
     const matchesLowStock = !showLowStockOnly || product.stock_quantity <= product.reorder_level;
 
-    return matchesSearch && matchesCategory && matchesLowStock;
+    return matchesSearch && matchesCategory && matchesBrand && matchesLowStock;
   });
 
   return (
@@ -327,6 +359,17 @@ function Inventory({ activeView, userRole }) {
           ))}
         </select>
 
+        <select
+          className="filter-select"
+          value={selectedBrand}
+          onChange={(e) => setSelectedBrand(e.target.value)}
+        >
+          <option value="">সকল ব্র্যান্ড/কোম্পানি</option>
+          {uniqueBrands.map((brandName, idx) => (
+            <option key={idx} value={brandName}>{brandName}</option>
+          ))}
+        </select>
+
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.95rem' }}>
           <input
             type="checkbox"
@@ -341,7 +384,7 @@ function Inventory({ activeView, userRole }) {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem' }}>পণ্য লোড হচ্ছে...</div>
       ) : (
-        <div className="table-container">
+        <div className="table-container desktop-only-view">
           <table className="data-table">
             <thead>
               <tr>
@@ -359,7 +402,7 @@ function Inventory({ activeView, userRole }) {
             <tbody>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                     কোনো পণ্য পাওয়া যায়নি।
                   </td>
                 </tr>
@@ -367,8 +410,13 @@ function Inventory({ activeView, userRole }) {
                 filteredProducts.map((product) => {
                   const isLow = product.stock_quantity <= product.reorder_level;
                   return (
-                    <tr key={product.id}>
-                      <td><strong>{product.name}</strong></td>
+                    <tr key={product.id} style={{ opacity: product.is_discontinued ? 0.55 : 1 }}>
+                      <td>
+                        <strong>{product.name}</strong>
+                        {product.is_discontinued && (
+                          <span className="badge warning" style={{ marginLeft: '0.5rem', fontSize: '0.7rem', padding: '0.15rem 0.35rem' }}>ডিস্কন্টিনিউড</span>
+                        )}
+                      </td>
                       <td><span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{product.category}</span></td>
                       <td>{product.brand || '-'}</td>
                       <td>{product.model || '-'}</td>
@@ -401,6 +449,75 @@ function Inventory({ activeView, userRole }) {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {!loading && (
+        <div className="mobile-card-list-view">
+          {filteredProducts.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+              কোনো পণ্য পাওয়া যায়নি।
+            </div>
+          ) : (
+            filteredProducts.map((product) => {
+              const isLow = product.stock_quantity <= product.reorder_level;
+              return (
+                <div key={product.id} className="mobile-product-card" style={{ opacity: product.is_discontinued ? 0.65 : 1 }}>
+                  <div className="card-header">
+                    <div className="product-title">
+                      <strong>{product.name}</strong>
+                      {product.brand && <span className="product-brand"> ({product.brand})</span>}
+                      {product.is_discontinued && (
+                        <span className="badge warning" style={{ marginLeft: '0.5rem', fontSize: '0.65rem', padding: '0.15rem 0.3rem', display: 'inline-block' }}>ডিস্কন্টিনিউড</span>
+                      )}
+                    </div>
+                    <span 
+                      className={`badge ${isLow ? 'danger' : 'success'}`}
+                      style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.25rem', fontSize: '0.75rem', padding: '0.3rem 0.6rem' }}
+                      onClick={() => viewProductBatches(product)}
+                      title="স্টক ব্যাচ বিবরণী দেখতে ক্লিক করুন"
+                    >
+                      স্টক: {product.stock_quantity} টি ℹ️
+                    </span>
+                  </div>
+                  <div className="card-body">
+                    <div className="detail-item">
+                      <span>ক্যাটাগরি:</span>
+                      <strong>{product.category}</strong>
+                    </div>
+                    <div className="detail-item">
+                      <span>মডেল/স্পেক:</span>
+                      <strong>{product.model || '-'}</strong>
+                    </div>
+                    <div className="detail-item">
+                      <span>রিস্টক অ্যালার্ট:</span>
+                      <strong>{product.reorder_level} টি</strong>
+                    </div>
+                    <div className="price-row">
+                      <div className="price-box">
+                        <span className="price-label">ক্রয়মূল্য</span>
+                        <span className="price-value">৳{parseFloat(product.purchase_price).toFixed(2)}</span>
+                      </div>
+                      <div className="price-box" style={{ borderLeft: '1px solid var(--border-color)' }}>
+                        <span className="price-label">বিক্রয়মূল্য</span>
+                        <span className="price-value">৳{parseFloat(product.selling_price).toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="card-actions">
+                    <button className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(product)}>
+                      <Edit2 size={12} /> এডিট
+                    </button>
+                    {userRole === 'admin' && (
+                      <button className="btn btn-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => handleDeleteProduct(product.id)}>
+                        <Trash2 size={12} /> মুছুন
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       )}
 
@@ -975,6 +1092,22 @@ function Inventory({ activeView, userRole }) {
                 </div>
               </div>
 
+              <div className="form-group" style={{ marginTop: '1rem', marginBottom: '1.5rem' }}>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.95rem' }}>
+                  <input
+                    type="checkbox"
+                    name="is_discontinued"
+                    checked={formData.is_discontinued}
+                    onChange={handleInputChange}
+                    style={{ width: '18px', height: '18px' }}
+                  />
+                  <strong style={{ color: 'var(--danger)' }}>পণ্যটি ডিস্কন্টিনিউ করুন (Discontinued)</strong>
+                </label>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px', marginLeft: '24px' }}>
+                  ডিস্কন্টিনিউ করা পণ্যটির পূর্ববর্তী সকল রেকর্ড ঠিক থাকবে, কিন্তু নতুন বিক্রয়/ক্রয়ের সার্চে এটি আসবে না এবং কোনো রিস্টক অ্যালার্ট দেখাবে না।
+                </p>
+              </div>
+
               <div className="form-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>বাতিল</button>
                 <button type="submit" className="btn btn-primary">আপডেট করুন</button>
@@ -1059,6 +1192,42 @@ function Inventory({ activeView, userRole }) {
                 onClick={() => setShowBatchesModal(false)}
               >
                 বন্ধ করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }}>
+            <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>
+              <AlertTriangle size={48} style={{ margin: '0 auto' }} />
+            </div>
+            <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', fontWeight: '700' }}>আপনি কি নিশ্চিত?</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '1.5rem', lineHeight: '1.5' }}>
+              {confirmModalMsg}
+            </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+              <button 
+                className="btn btn-secondary" 
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
+                }}
+              >
+                বাতিল করুন
+              </button>
+              <button 
+                className="btn btn-danger" 
+                onClick={() => {
+                  if (confirmAction) confirmAction();
+                  setShowConfirmModal(false);
+                  setConfirmAction(null);
+                }}
+              >
+                হ্যাঁ, ডিলিট করুন
               </button>
             </div>
           </div>

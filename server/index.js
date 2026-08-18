@@ -47,6 +47,22 @@ const requireAdmin = (req, res, next) => {
   }
 };
 
+// Middleware to enforce specific module permissions
+const requirePermission = (moduleName) => {
+  return (req, res, next) => {
+    if (req.user) {
+      if (req.user.role === 'admin') {
+        return next();
+      }
+      const allowed = req.user.allowed_modules || '';
+      if (allowed.split(',').includes(moduleName)) {
+        return next();
+      }
+    }
+    res.status(403).json({ error: `Access denied. Requires '${moduleName}' permission.` });
+  };
+};
+
 // Protect all API routes under /api except auth
 app.use('/api', (req, res, next) => {
   if (req.path === '/auth/login') {
@@ -81,7 +97,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Generate JWT token (expires in 7 days)
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role },
+      { id: user.id, username: user.username, role: user.role, allowed_modules: user.allowed_modules },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -91,7 +107,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user.id,
         username: user.username,
-        role: user.role
+        role: user.role,
+        allowed_modules: user.allowed_modules
       }
     });
   } catch (err) {
@@ -140,7 +157,8 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
       user: {
         id: userId,
         username: updatedUsername,
-        role: user.role
+        role: user.role,
+        allowed_modules: user.allowed_modules
       }
     });
   } catch (err) {
@@ -159,7 +177,7 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
 // Get all users (Admin only)
 app.get('/api/users', requireAdmin, async (req, res) => {
   try {
-    const result = await pool.query('SELECT id, username, role, created_at FROM users ORDER BY username ASC');
+    const result = await pool.query('SELECT id, username, role, allowed_modules, created_at FROM users ORDER BY username ASC');
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -169,7 +187,7 @@ app.get('/api/users', requireAdmin, async (req, res) => {
 
 // Add new user (Admin only)
 app.post('/api/users', requireAdmin, async (req, res) => {
-  const { username, password, role } = req.body;
+  const { username, password, role, allowed_modules } = req.body;
   if (!username || !password || !role) {
     return res.status(400).json({ error: 'ইউজারনেম, পাসওয়ার্ড এবং রোল আবশ্যক' });
   }
@@ -178,6 +196,11 @@ app.post('/api/users', requireAdmin, async (req, res) => {
   if (trimmedUsername.toLowerCase() === 'admin') {
     return res.status(400).json({ error: 'admin ইউজারনেমটি সংরক্ষিত, এটি ব্যবহার করা যাবে না' });
   }
+
+  // Determine allowed modules based on role
+  const modules = role === 'admin' 
+    ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+    : (allowed_modules || 'dashboard,inventory,purchases,sales');
 
   try {
     // Check if user already exists
@@ -190,8 +213,8 @@ app.post('/api/users', requireAdmin, async (req, res) => {
     const passwordHash = await bcrypt.hash(password, salt);
     
     const result = await pool.query(
-      'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
-      [trimmedUsername, passwordHash, role]
+      'INSERT INTO users (username, password_hash, role, allowed_modules) VALUES ($1, $2, $3, $4) RETURNING id, username, role, allowed_modules, created_at',
+      [trimmedUsername, passwordHash, role, modules]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -303,7 +326,7 @@ app.put('/api/brands/:id', async (req, res) => {
 // ==========================================
 
 // Get all products
-app.get('/api/products', async (req, res) => {
+app.get('/api/products', requirePermission('inventory'), async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM products ORDER BY id DESC');
     res.json(result.rows);
@@ -314,7 +337,7 @@ app.get('/api/products', async (req, res) => {
 });
 
 // Add a product
-app.post('/api/products', async (req, res) => {
+app.post('/api/products', requirePermission('inventory'), async (req, res) => {
   const { name, category, brand, model, purchase_price, selling_price, stock_quantity, reorder_level } = req.body;
   const client = await pool.connect();
   try {
@@ -354,17 +377,17 @@ app.post('/api/products', async (req, res) => {
 });
 
 // Update a product
-app.put('/api/products/:id', async (req, res) => {
+app.put('/api/products/:id', requirePermission('inventory'), async (req, res) => {
   const { id } = req.params;
-  const { name, category, brand, model, purchase_price, selling_price, stock_quantity, reorder_level } = req.body;
+  const { name, category, brand, model, purchase_price, selling_price, stock_quantity, reorder_level, is_discontinued } = req.body;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const result = await client.query(
       `UPDATE products 
-       SET name = $1, category = $2, brand = $3, model = $4, purchase_price = $5, selling_price = $6, stock_quantity = $7, reorder_level = $8
-       WHERE id = $9 RETURNING *`,
-      [name, category, brand || '', model || '', purchase_price, selling_price, stock_quantity, reorder_level, id]
+       SET name = $1, category = $2, brand = $3, model = $4, purchase_price = $5, selling_price = $6, stock_quantity = $7, reorder_level = $8, is_discontinued = $9
+       WHERE id = $10 RETURNING *`,
+      [name, category, brand || '', model || '', purchase_price, selling_price, stock_quantity, reorder_level, is_discontinued || false, id]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Product not found' });
@@ -476,7 +499,7 @@ app.get('/api/products/:id/batches', async (req, res) => {
 // Get all products with their active stock batches
 app.get('/api/products/with-batches', async (req, res) => {
   try {
-    const productsRes = await pool.query('SELECT * FROM products ORDER BY name ASC');
+    const productsRes = await pool.query('SELECT * FROM products WHERE is_discontinued = FALSE OR is_discontinued IS NULL ORDER BY name ASC');
     const products = productsRes.rows;
     
     const batchesRes = await pool.query(`
@@ -526,7 +549,7 @@ app.get('/api/products/with-batches', async (req, res) => {
 // ==========================================
 
 // Get all purchase logs
-app.get('/api/purchases', async (req, res) => {
+app.get('/api/purchases', requirePermission('purchases'), async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT p.*, prod.name as product_name, prod.category as product_category, prod.brand as product_brand
@@ -542,7 +565,7 @@ app.get('/api/purchases', async (req, res) => {
 });
 
 // Log a purchase and update stock
-app.post('/api/purchases', async (req, res) => {
+app.post('/api/purchases', requirePermission('purchases'), async (req, res) => {
   const { product_id, quantity, purchase_price, vendor_name, purchase_date, items, invoice_no } = req.body;
   
   const client = await pool.connect();
@@ -738,7 +761,7 @@ app.put('/api/purchases/invoice/:invoice_no', async (req, res) => {
 
 
 // Edit a purchase log
-app.put('/api/purchases/:id', async (req, res) => {
+app.put('/api/purchases/:id', requirePermission('purchases'), async (req, res) => {
   const { id } = req.params;
   const { quantity, purchase_price, vendor_name, purchase_date } = req.body;
   const qty = parseInt(quantity);
@@ -844,7 +867,7 @@ app.delete('/api/purchases/:id', requireAdmin, async (req, res) => {
 // ==========================================
 
 // Get all sales logs
-app.get('/api/sales', async (req, res) => {
+app.get('/api/sales', requirePermission('sales'), async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM sales ORDER BY id DESC');
     res.json(result.rows);
@@ -881,7 +904,7 @@ app.get('/api/sales/:id', async (req, res) => {
 });
 
 // Log a sale and decrease stock
-app.post('/api/sales', async (req, res) => {
+app.post('/api/sales', requirePermission('sales'), async (req, res) => {
   const { customer_name, customer_phone, discount, items, sale_date } = req.body;
   // items should be an array of: { product_id, quantity, selling_price, purchase_id }
   
@@ -1089,7 +1112,7 @@ app.delete('/api/sales/:id', requireAdmin, async (req, res) => {
 // ==========================================
 
 // Get all employee expenses
-app.get('/api/employee-expenses', requireAdmin, async (req, res) => {
+app.get('/api/employee-expenses', requirePermission('expenses'), async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM employee_expenses ORDER BY payment_date DESC, id DESC');
     res.json(result.rows);
@@ -1100,7 +1123,7 @@ app.get('/api/employee-expenses', requireAdmin, async (req, res) => {
 });
 
 // Add employee expense
-app.post('/api/employee-expenses', requireAdmin, async (req, res) => {
+app.post('/api/employee-expenses', requirePermission('expenses'), async (req, res) => {
   const { employee_name, expense_type, amount, month_year, payment_date, notes } = req.body;
   try {
     const pDate = payment_date ? new Date(payment_date) : new Date();
@@ -1137,7 +1160,7 @@ app.delete('/api/employee-expenses/:id', requireAdmin, async (req, res) => {
 // ==========================================
 
 // Get all shop expenses
-app.get('/api/shop-expenses', async (req, res) => {
+app.get('/api/shop-expenses', requirePermission('expenses'), async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM shop_expenses ORDER BY expense_date DESC, id DESC');
     res.json(result.rows);
@@ -1148,7 +1171,7 @@ app.get('/api/shop-expenses', async (req, res) => {
 });
 
 // Add shop expense
-app.post('/api/shop-expenses', async (req, res) => {
+app.post('/api/shop-expenses', requirePermission('expenses'), async (req, res) => {
   const { category, amount, expense_date, notes } = req.body;
   try {
     const eDate = expense_date ? new Date(expense_date) : new Date();
@@ -1202,7 +1225,7 @@ app.get('/api/reports/summary', async (req, res) => {
     
     // 2. Low stock alert count
     const lowStockResult = await pool.query(`
-      SELECT COUNT(*) as count FROM products WHERE stock_quantity <= reorder_level
+      SELECT COUNT(*) as count FROM products WHERE stock_quantity <= reorder_level AND (is_discontinued = FALSE OR is_discontinued IS NULL)
     `);
 
     // Date bounds for current month (using standard UTC date strings or simple query)
@@ -1241,6 +1264,38 @@ app.get('/api/reports/summary', async (req, res) => {
       WHERE expense_date >= $1 AND expense_date < $2
     `, [monthStart, monthEnd]);
 
+    // 7. Top Selling Products
+    const topSellingRes = await pool.query(`
+      SELECT 
+        p.id,
+        p.name,
+        p.brand,
+        p.model,
+        SUM(si.quantity) as total_sold
+      FROM sale_items si
+      JOIN products p ON si.product_id = p.id
+      GROUP BY p.id, p.name, p.brand, p.model
+      ORDER BY total_sold DESC
+      LIMIT 5
+    `);
+
+    // 8. Least Selling Products (with last sold date)
+    const leastSellingRes = await pool.query(`
+      SELECT 
+        p.id,
+        p.name,
+        p.brand,
+        p.model,
+        COALESCE(SUM(si.quantity), 0) as total_sold,
+        MAX(s.sale_date) as last_sold_date
+      FROM products p
+      LEFT JOIN sale_items si ON si.product_id = p.id
+      LEFT JOIN sales s ON si.sale_id = s.id
+      GROUP BY p.id, p.name, p.brand, p.model
+      ORDER BY total_sold ASC, last_sold_date ASC NULLS FIRST
+      LIMIT 5
+    `);
+
     res.json({
       stock: {
         total_items: parseInt(stockResult.rows[0].total_items || 0),
@@ -1253,7 +1308,22 @@ app.get('/api/reports/summary', async (req, res) => {
         purchases_total: parseFloat(purchasesResult.rows[0].total || 0),
         employee_expenses: parseFloat(empExpResult.rows[0].total || 0),
         shop_expenses: parseFloat(shopExpResult.rows[0].total || 0)
-      }
+      },
+      top_selling: topSellingRes.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        brand: r.brand,
+        model: r.model,
+        total_sold: parseInt(r.total_sold || 0)
+      })),
+      least_selling: leastSellingRes.rows.map(r => ({
+        id: r.id,
+        name: r.name,
+        brand: r.brand,
+        model: r.model,
+        total_sold: parseInt(r.total_sold || 0),
+        last_sold_date: r.last_sold_date
+      }))
     });
   } catch (err) {
     console.error(err);
@@ -1262,7 +1332,7 @@ app.get('/api/reports/summary', async (req, res) => {
 });
 
 // Monthly report data (sales, expenses, purchases by day for a given month)
-app.get('/api/reports/monthly', requireAdmin, async (req, res) => {
+app.get('/api/reports/monthly', requirePermission('reports'), async (req, res) => {
   const { year, month } = req.query;
   const targetYear = parseInt(year || new Date().getFullYear());
   const targetMonth = parseInt(month || (new Date().getMonth() + 1));
@@ -1351,7 +1421,7 @@ app.get('/api/reports/monthly', requireAdmin, async (req, res) => {
 });
 
 // Yearly report data (sales, expenses, purchases by month for a given year)
-app.get('/api/reports/yearly', requireAdmin, async (req, res) => {
+app.get('/api/reports/yearly', requirePermission('reports'), async (req, res) => {
   const { year } = req.query;
   const targetYear = parseInt(year || new Date().getFullYear());
   
@@ -1409,7 +1479,7 @@ app.get('/api/reports/yearly', requireAdmin, async (req, res) => {
 });
 
 // Analytics: Most sold and oldest products
-app.get('/api/reports/stats', requireAdmin, async (req, res) => {
+app.get('/api/reports/stats', requirePermission('reports'), async (req, res) => {
   try {
     // 1. Most sold products (সব থেকে বেশি বিক্রিত পণ্য)
     const mostSoldResult = await pool.query(`

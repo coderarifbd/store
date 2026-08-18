@@ -40,6 +40,7 @@ function App() {
     }
   });
   const [currentView, setCurrentView] = useState('dashboard');
+  const [inventorySearchTerm, setInventorySearchTerm] = useState('');
   
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   const [changePasswordFormData, setChangePasswordFormData] = useState({
@@ -94,6 +95,21 @@ function App() {
     }
   };
 
+  // Safeguard: Check if the user is allowed to see the currentView
+  const allowed = user?.role === 'admin' 
+    ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+    : (user?.allowed_modules || 'dashboard,inventory,purchases,sales');
+
+  const isViewAllowed = allowed.split(',').includes(currentView);
+  
+  // If the current view is not allowed, revert to the first allowed view
+  React.useEffect(() => {
+    if (user && !isViewAllowed) {
+      const firstAllowed = allowed.split(',')[0] || 'dashboard';
+      setCurrentView(firstAllowed);
+    }
+  }, [currentView, user, isViewAllowed, allowed]);
+
   if (!token) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -106,6 +122,7 @@ function App() {
         setCurrentView={setCurrentView} 
         username={user?.username}
         userRole={user?.role}
+        userAllowedModules={user?.allowed_modules}
         onLogout={handleLogout} 
         onChangePassword={handleOpenChangePasswordModal}
       />
@@ -113,10 +130,20 @@ function App() {
       {/* Main View Panel */}
       <main className="main-content">
         <div style={{ display: currentView === 'dashboard' ? 'block' : 'none' }}>
-          <Dashboard setActiveTab={setCurrentView} activeView={currentView} userRole={user?.role} />
+          <Dashboard 
+            setActiveTab={setCurrentView} 
+            activeView={currentView} 
+            userRole={user?.role} 
+            setInventorySearchTerm={setInventorySearchTerm} 
+          />
         </div>
         <div style={{ display: currentView === 'inventory' ? 'block' : 'none' }}>
-          <Inventory activeView={currentView} userRole={user?.role} />
+          <Inventory 
+            activeView={currentView} 
+            userRole={user?.role} 
+            initialSearchTerm={inventorySearchTerm} 
+            setInitialSearchTerm={setInventorySearchTerm} 
+          />
         </div>
         <div style={{ display: currentView === 'purchases' ? 'block' : 'none' }}>
           <Purchases activeView={currentView} userRole={user?.role} />

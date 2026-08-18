@@ -4,10 +4,11 @@ import {
   DollarSign, 
   ArrowDownCircle, 
   AlertTriangle,
-  PackageCheck
+  PackageCheck,
+  Eye
 } from 'lucide-react';
 
-function Dashboard({ setActiveTab, activeView }) {
+function Dashboard({ setActiveTab, activeView, setInventorySearchTerm }) {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -34,7 +35,7 @@ function Dashboard({ setActiveTab, activeView }) {
       const productsRes = await fetch('/api/products');
       if (productsRes.ok) {
         const products = await productsRes.json();
-        const lowStock = products.filter(p => p.stock_quantity <= p.reorder_level);
+        const lowStock = products.filter(p => p.stock_quantity <= p.reorder_level && !p.is_discontinued);
         setLowStockProducts(lowStock);
       }
  
@@ -152,30 +153,30 @@ function Dashboard({ setActiveTab, activeView }) {
       {lowStockProducts.length > 0 && (
         <div style={{ marginTop: '2rem' }}>
           <h2 style={{ fontSize: '1.25rem', marginBottom: '1rem', fontWeight: '600' }}>পুনরায় ক্রয় করা প্রয়োজন (কম স্টক থাকা পণ্য)</h2>
-          <div className="table-container">
+          <div className="table-container" style={{ maxHeight: '320px', overflowY: 'auto' }}>
             <table className="data-table">
               <thead>
-                <tr>
+                <tr style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-secondary)', zIndex: 1 }}>
                   <th>পণ্যের নাম</th>
-                  <th>ক্যাটাগরি</th>
+                  <th className="hide-on-mobile">ক্যাটাগরি</th>
                   <th>মডেল/স্পেসিফিকেশন</th>
                   <th>বর্তমান স্টক</th>
-                  <th>সতর্কতা লেভেল</th>
+                  <th className="hide-on-mobile">সতর্কতা লেভেল</th>
                   <th>একশন</th>
                 </tr>
               </thead>
               <tbody>
-                {lowStockProducts.slice(0, 5).map((prod) => (
+                {lowStockProducts.map((prod) => (
                   <tr key={prod.id}>
-                    <td><strong>{prod.name}</strong></td>
-                    <td>{prod.category}</td>
+                    <td><strong>{prod.name}{prod.brand ? ` - ${prod.brand}` : ''}</strong></td>
+                    <td className="hide-on-mobile">{prod.category}</td>
                     <td>{prod.model || '-'}</td>
                     <td>
                       <span className="badge danger">
                         {prod.stock_quantity} টি
                       </span>
                     </td>
-                    <td>{prod.reorder_level} টি</td>
+                    <td className="hide-on-mobile">{prod.reorder_level} টি</td>
                     <td>
                       <button 
                         className="btn btn-secondary" 
@@ -192,6 +193,123 @@ function Dashboard({ setActiveTab, activeView }) {
           </div>
         </div>
       )}
+
+      {/* Two-column Product Performance Section */}
+      <div className="performance-grid" style={{ marginTop: '2.5rem' }}>
+        {/* Left Column: Top Selling Products */}
+        <div className="card">
+          <h2 style={{ fontSize: '1.25rem', marginBottom: '1.25rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <TrendingUp size={20} color="var(--success)" />
+            সবচেয়ে বেশি বিক্রিত পণ্য (Top Selling)
+          </h2>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>পণ্যের নাম</th>
+                  <th>মডেল/স্পেক</th>
+                  <th style={{ textAlign: 'center' }}>মোট বিক্রি</th>
+                  <th style={{ textAlign: 'center' }}>একশন</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!summary?.top_selling || summary.top_selling.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                      কোনো বিক্রয় রেকর্ড পাওয়া যায়নি।
+                    </td>
+                  </tr>
+                ) : (
+                  summary.top_selling.map(prod => (
+                    <tr key={prod.id}>
+                      <td>
+                        <strong>{prod.name}{prod.brand ? ` - ${prod.brand}` : ''}</strong>
+                      </td>
+                      <td>{prod.model || '-'}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="badge success">{prod.total_sold} টি</span>
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-secondary)', cursor: 'pointer' }}
+                          onClick={() => {
+                            if (setInventorySearchTerm) setInventorySearchTerm(prod.name);
+                            setActiveTab('inventory');
+                          }}
+                          title="ইনভেন্টরিতে দেখুন"
+                        >
+                          <Eye size={14} color="var(--accent-color)" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right Column: Least Selling Products */}
+        <div className="card">
+          <h2 style={{ fontSize: '1.25rem', marginBottom: '1.25rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <TrendingUp size={20} color="var(--danger)" style={{ transform: 'rotate(180deg)' }} />
+            সবচেয়ে কম বিক্রিত পণ্য (Least Selling)
+          </h2>
+          <div className="table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>পণ্যের নাম</th>
+                  <th style={{ textAlign: 'center' }}>মোট বিক্রি</th>
+                  <th>সর্বশেষ বিক্রয়ের তারিখ</th>
+                  <th style={{ textAlign: 'center' }}>একশন</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!summary?.least_selling || summary.least_selling.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                      কোনো পণ্য পাওয়া যায়নি।
+                    </td>
+                  </tr>
+                ) : (
+                  summary.least_selling.map(prod => (
+                    <tr key={prod.id}>
+                      <td>
+                        <strong>{prod.name}{prod.brand ? ` - ${prod.brand}` : ''}</strong>
+                        {prod.model && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{prod.model}</div>}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="badge warning">{prod.total_sold} টি</span>
+                      </td>
+                      <td>
+                        {prod.last_sold_date 
+                          ? new Date(prod.last_sold_date).toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' })
+                          : <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>বিক্রি হয়নি</span>
+                        }
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        <button 
+                          className="btn-icon" 
+                          style={{ padding: '4px', border: '1px solid var(--border-color)', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-secondary)', cursor: 'pointer' }}
+                          onClick={() => {
+                            if (setInventorySearchTerm) setInventorySearchTerm(prod.name);
+                            setActiveTab('inventory');
+                          }}
+                          title="ইনভেন্টরিতে দেখুন"
+                        >
+                          <Eye size={14} color="var(--accent-color)" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

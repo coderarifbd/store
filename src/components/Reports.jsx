@@ -424,7 +424,7 @@ function Reports({ activeView }) {
 
           {/* 3. Analytics Report Layout */}
           {reportType === 'analytics' && statsData && (
-            <div className="report-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+            <div className="performance-grid">
               {/* Most sold products */}
               <div className="card">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
