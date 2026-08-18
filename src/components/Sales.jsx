@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye } from 'lucide-react';
 
-function Sales({ activeView }) {
+function Sales({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('pos'); // 'pos' or 'history'
   const [products, setProducts] = useState([]);
   const [sales, setSales] = useState([]);
@@ -554,6 +554,7 @@ function Sales({ activeView }) {
                             >
                               <Eye size={16} />
                             </button>
+                            {userRole === 'admin' && (
                             <button 
                               type="button"
                               className="btn-icon delete" 
@@ -563,6 +564,7 @@ function Sales({ activeView }) {
                             >
                               <Trash2 size={16} />
                             </button>
+                          )}
                           </div>
                         </td>
                       </tr>

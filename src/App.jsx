@@ -7,6 +7,7 @@ import Sales from './components/Sales';
 import Expenses from './components/Expenses';
 import Reports from './components/Reports';
 import Login from './components/Login';
+import UsersManagement from './components/Users';
 
 // Intercept global fetch to inject JWT bearer tokens and handle auto-logout on session expiry (401/403)
 const originalFetch = window.fetch;
@@ -104,6 +105,7 @@ function App() {
         currentView={currentView} 
         setCurrentView={setCurrentView} 
         username={user?.username}
+        userRole={user?.role}
         onLogout={handleLogout} 
         onChangePassword={handleOpenChangePasswordModal}
       />
@@ -111,23 +113,30 @@ function App() {
       {/* Main View Panel */}
       <main className="main-content">
         <div style={{ display: currentView === 'dashboard' ? 'block' : 'none' }}>
-          <Dashboard setActiveTab={setCurrentView} activeView={currentView} />
+          <Dashboard setActiveTab={setCurrentView} activeView={currentView} userRole={user?.role} />
         </div>
         <div style={{ display: currentView === 'inventory' ? 'block' : 'none' }}>
-          <Inventory activeView={currentView} />
+          <Inventory activeView={currentView} userRole={user?.role} />
         </div>
         <div style={{ display: currentView === 'purchases' ? 'block' : 'none' }}>
-          <Purchases activeView={currentView} />
+          <Purchases activeView={currentView} userRole={user?.role} />
         </div>
         <div style={{ display: currentView === 'sales' ? 'block' : 'none' }}>
-          <Sales activeView={currentView} />
+          <Sales activeView={currentView} userRole={user?.role} />
         </div>
         <div style={{ display: currentView === 'expenses' ? 'block' : 'none' }}>
-          <Expenses activeView={currentView} />
+          <Expenses activeView={currentView} userRole={user?.role} />
         </div>
-        <div style={{ display: currentView === 'reports' ? 'block' : 'none' }}>
-          <Reports activeView={currentView} />
-        </div>
+        {user?.role === 'admin' && (
+          <div style={{ display: currentView === 'reports' ? 'block' : 'none' }}>
+            <Reports activeView={currentView} />
+          </div>
+        )}
+        {user?.role === 'admin' && (
+          <div style={{ display: currentView === 'users' ? 'block' : 'none' }}>
+            <UsersManagement />
+          </div>
+        )}
       </main>
 
       {/* Change Password Modal */}

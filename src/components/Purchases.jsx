@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye } from 'lucide-react';
 
-function Purchases({ activeView }) {
+function Purchases({ activeView, userRole }) {
   const [purchases, setPurchases] = useState([]);
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -528,6 +528,7 @@ function Purchases({ activeView }) {
                           >
                             <Edit2 size={16} />
                           </button>
+                          {userRole === 'admin' && (
                           <button 
                             className="btn-icon delete" 
                             style={{ padding: '0.25rem' }} 
@@ -536,6 +537,7 @@ function Purchases({ activeView }) {
                           >
                             <Trash2 size={16} />
                           </button>
+                        )}
                         </div>
                       </td>
                     </tr>

@@ -13,7 +13,7 @@ const CATEGORIES = [
   'অন্যান্য (Others)'
 ];
 
-function Inventory({ activeView }) {
+function Inventory({ activeView, userRole }) {
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
   const [newBrandName, setNewBrandName] = useState('');
@@ -389,9 +389,11 @@ function Inventory({ activeView }) {
                         <button className="btn-icon" onClick={() => openEditModal(product)} title="এডিট">
                           <Edit2 size={16} />
                         </button>
-                        <button className="btn-icon delete" onClick={() => handleDeleteProduct(product.id)} title="ডিলিট">
-                          <Trash2 size={16} />
-                        </button>
+                        {userRole === 'admin' && (
+                          <button className="btn-icon delete" onClick={() => handleDeleteProduct(product.id)} title="ডিলিট">
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -591,6 +593,7 @@ function Inventory({ activeView }) {
                                       >
                                         <Edit2 size={12} />
                                       </button>
+                                      {userRole === 'admin' && (
                                       <button
                                         type="button"
                                         className="btn-icon delete"
@@ -603,6 +606,7 @@ function Inventory({ activeView }) {
                                       >
                                         <Trash2 size={12} />
                                       </button>
+                                    )}
                                     </div>
                                   </>
                                 )}

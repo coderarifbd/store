@@ -38,6 +38,15 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Middleware to enforce admin role
+const requireAdmin = (req, res, next) => {
+  if (req.user && req.user.role === 'admin') {
+    next();
+  } else {
+    res.status(403).json({ error: 'Access denied. Admin role required.' });
+  }
+};
+
 // Protect all API routes under /api except auth
 app.use('/api', (req, res, next) => {
   if (req.path === '/auth/login') {
@@ -72,7 +81,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     // Generate JWT token (expires in 7 days)
     const token = jwt.sign(
-      { id: user.id, username: user.username },
+      { id: user.id, username: user.username, role: user.role },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -81,7 +90,8 @@ app.post('/api/auth/login', async (req, res) => {
       token,
       user: {
         id: user.id,
-        username: user.username
+        username: user.username,
+        role: user.role
       }
     });
   } catch (err) {
@@ -129,7 +139,8 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
       message: 'Password changed successfully',
       user: {
         id: userId,
-        username: updatedUsername
+        username: updatedUsername,
+        role: user.role
       }
     });
   } catch (err) {
@@ -138,6 +149,82 @@ app.put('/api/auth/change-password', authenticateToken, async (req, res) => {
     res.status(500).json({ error: err.message || 'পাসওয়ার্ড পরিবর্তন করতে ব্যর্থ হয়েছে' });
   } finally {
     client.release();
+  }
+});
+
+// ==========================================
+// USER MANAGEMENT ENDPOINTS (ইউজার ব্যবস্থাপনা)
+// ==========================================
+
+// Get all users (Admin only)
+app.get('/api/users', requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT id, username, role, created_at FROM users ORDER BY username ASC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching users' });
+  }
+});
+
+// Add new user (Admin only)
+app.post('/api/users', requireAdmin, async (req, res) => {
+  const { username, password, role } = req.body;
+  if (!username || !password || !role) {
+    return res.status(400).json({ error: 'ইউজারনেম, পাসওয়ার্ড এবং রোল আবশ্যক' });
+  }
+  
+  const trimmedUsername = username.trim();
+  if (trimmedUsername.toLowerCase() === 'admin') {
+    return res.status(400).json({ error: 'admin ইউজারনেমটি সংরক্ষিত, এটি ব্যবহার করা যাবে না' });
+  }
+
+  try {
+    // Check if user already exists
+    const checkUser = await pool.query('SELECT * FROM users WHERE username = $1', [trimmedUsername]);
+    if (checkUser.rows.length > 0) {
+      return res.status(400).json({ error: 'এই ইউজারনেমটি ইতিমধ্যে ব্যবহৃত হয়েছে' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+    
+    const result = await pool.query(
+      'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) RETURNING id, username, role, created_at',
+      [trimmedUsername, passwordHash, role]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error creating user' });
+  }
+});
+
+// Delete user (Admin only)
+app.delete('/api/users/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const userIdToDelete = parseInt(id);
+  
+  if (req.user.id === userIdToDelete) {
+    return res.status(400).json({ error: 'আপনি নিজের অ্যাকাউন্ট ডিলিট করতে পারবেন না' });
+  }
+
+  try {
+    // Check if the user is default admin
+    const checkUser = await pool.query('SELECT * FROM users WHERE id = $1', [userIdToDelete]);
+    if (checkUser.rows.length === 0) {
+      return res.status(404).json({ error: 'ইউজার খুঁজে পাওয়া যায়নি' });
+    }
+    
+    if (checkUser.rows[0].username === 'admin') {
+      return res.status(400).json({ error: 'ডিফল্ট admin অ্যাকাউন্ট ডিলিট করা সম্ভব নয়' });
+    }
+
+    await pool.query('DELETE FROM users WHERE id = $1', [userIdToDelete]);
+    res.json({ message: 'User deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error deleting user' });
   }
 });
 
@@ -175,7 +262,7 @@ app.post('/api/brands', async (req, res) => {
 });
 
 // Delete a brand
-app.delete('/api/brands/:id', async (req, res) => {
+app.delete('/api/brands/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('DELETE FROM brands WHERE id = $1 RETURNING *', [id]);
@@ -327,7 +414,7 @@ app.put('/api/products/:id', async (req, res) => {
 });
 
 // Delete a product
-app.delete('/api/products/:id', async (req, res) => {
+app.delete('/api/products/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('DELETE FROM products WHERE id = $1 RETURNING *', [id]);
@@ -530,7 +617,7 @@ app.post('/api/purchases', async (req, res) => {
 });
 
 // Delete a purchase invoice (all items under same invoice_no) and restore stock
-app.delete('/api/purchases/invoice/:invoice_no', async (req, res) => {
+app.delete('/api/purchases/invoice/:invoice_no', requireAdmin, async (req, res) => {
   const { invoice_no } = req.params;
   const client = await pool.connect();
   try {
@@ -704,7 +791,7 @@ app.put('/api/purchases/:id', async (req, res) => {
 });
 
 // Delete a purchase log
-app.delete('/api/purchases/:id', async (req, res) => {
+app.delete('/api/purchases/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
   try {
@@ -962,7 +1049,7 @@ app.post('/api/sales', async (req, res) => {
 
 
 // Delete a sale log and restore stock
-app.delete('/api/sales/:id', async (req, res) => {
+app.delete('/api/sales/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   const client = await pool.connect();
   try {
@@ -1002,7 +1089,7 @@ app.delete('/api/sales/:id', async (req, res) => {
 // ==========================================
 
 // Get all employee expenses
-app.get('/api/employee-expenses', async (req, res) => {
+app.get('/api/employee-expenses', requireAdmin, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM employee_expenses ORDER BY payment_date DESC, id DESC');
     res.json(result.rows);
@@ -1013,7 +1100,7 @@ app.get('/api/employee-expenses', async (req, res) => {
 });
 
 // Add employee expense
-app.post('/api/employee-expenses', async (req, res) => {
+app.post('/api/employee-expenses', requireAdmin, async (req, res) => {
   const { employee_name, expense_type, amount, month_year, payment_date, notes } = req.body;
   try {
     const pDate = payment_date ? new Date(payment_date) : new Date();
@@ -1030,7 +1117,7 @@ app.post('/api/employee-expenses', async (req, res) => {
 });
 
 // Delete employee expense
-app.delete('/api/employee-expenses/:id', async (req, res) => {
+app.delete('/api/employee-expenses/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('DELETE FROM employee_expenses WHERE id = $1 RETURNING *', [id]);
@@ -1078,7 +1165,7 @@ app.post('/api/shop-expenses', async (req, res) => {
 });
 
 // Delete shop expense
-app.delete('/api/shop-expenses/:id', async (req, res) => {
+app.delete('/api/shop-expenses/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;
   try {
     const result = await pool.query('DELETE FROM shop_expenses WHERE id = $1 RETURNING *', [id]);
@@ -1175,7 +1262,7 @@ app.get('/api/reports/summary', async (req, res) => {
 });
 
 // Monthly report data (sales, expenses, purchases by day for a given month)
-app.get('/api/reports/monthly', async (req, res) => {
+app.get('/api/reports/monthly', requireAdmin, async (req, res) => {
   const { year, month } = req.query;
   const targetYear = parseInt(year || new Date().getFullYear());
   const targetMonth = parseInt(month || (new Date().getMonth() + 1));
@@ -1264,7 +1351,7 @@ app.get('/api/reports/monthly', async (req, res) => {
 });
 
 // Yearly report data (sales, expenses, purchases by month for a given year)
-app.get('/api/reports/yearly', async (req, res) => {
+app.get('/api/reports/yearly', requireAdmin, async (req, res) => {
   const { year } = req.query;
   const targetYear = parseInt(year || new Date().getFullYear());
   
@@ -1322,7 +1409,7 @@ app.get('/api/reports/yearly', async (req, res) => {
 });
 
 // Analytics: Most sold and oldest products
-app.get('/api/reports/stats', async (req, res) => {
+app.get('/api/reports/stats', requireAdmin, async (req, res) => {
   try {
     // 1. Most sold products (সব থেকে বেশি বিক্রিত পণ্য)
     const mostSoldResult = await pool.query(`

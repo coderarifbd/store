@@ -143,8 +143,15 @@ const initDb = async () => {
         id SERIAL PRIMARY KEY,
         username VARCHAR(50) UNIQUE NOT NULL,
         password_hash VARCHAR(255) NOT NULL,
+        role VARCHAR(20) NOT NULL DEFAULT 'employee',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // Migration to add role column to existing users table if missing
+    await client.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'employee';
     `);
 
     // Seed default admin user if none exists
@@ -153,10 +160,13 @@ const initDb = async () => {
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash('admin123', salt);
       await client.query(
-        'INSERT INTO users (username, password_hash) VALUES ($1, $2)',
-        ['admin', passwordHash]
+        'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3)',
+        ['admin', passwordHash, 'admin']
       );
       console.log('Default admin user seeded successfully.');
+    } else {
+      // Ensure the 'admin' user is set to 'admin' role
+      await client.query("UPDATE users SET role = 'admin' WHERE username = 'admin'");
     }
 
     console.log('Database tables initialized successfully.');

@@ -7,18 +7,23 @@ import {
   Receipt, 
   BarChart3,
   LogOut,
-  User
+  User,
+  Users
 } from 'lucide-react';
 
-function Sidebar({ currentView, setCurrentView, username, onLogout, onChangePassword }) {
+function Sidebar({ currentView, setCurrentView, username, userRole, onLogout, onChangePassword }) {
   const menuItems = [
     { id: 'dashboard', label: 'ড্যাশবোর্ড', icon: LayoutDashboard },
     { id: 'inventory', label: 'ইনভেন্টরি স্টক', icon: Package },
     { id: 'purchases', label: 'পণ্য ক্রয় হিসাব', icon: ShoppingCart },
     { id: 'sales', label: 'পণ্য বিক্রি (POS)', icon: Receipt },
-    { id: 'expenses', label: 'খরচ হিসাব', icon: BadgeDollarSign },
-    { id: 'reports', label: 'রিপোর্ট ও বিশ্লেষণ', icon: BarChart3 },
   ];
+
+  if (userRole === 'admin') {
+    menuItems.push({ id: 'expenses', label: 'খরচ হিসাব', icon: BadgeDollarSign });
+    menuItems.push({ id: 'reports', label: 'রিপোর্ট ও বিশ্লেষণ', icon: BarChart3 });
+    menuItems.push({ id: 'users', label: 'ইউজার ব্যবস্থাপনা', icon: Users });
+  }
 
   return (
     <div className="sidebar">
@@ -26,7 +31,7 @@ function Sidebar({ currentView, setCurrentView, username, onLogout, onChangePass
         <span style={{ display: 'inline-flex', padding: '6px', background: 'var(--accent-color)', borderRadius: '8px' }}>
           <Package size={20} color="#fff" />
         </span>
-        <span>ইলেক্ট্রিক্যাল স্টোর</span>
+        <span>ফারদিন ইলেক্ট্রিক্যাল স্টোর</span>
       </div>
       <ul className="sidebar-menu">
         {menuItems.map((item) => {

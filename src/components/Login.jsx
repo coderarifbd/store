@@ -76,7 +76,7 @@ function Login({ onLoginSuccess }) {
             <Lock size={28} />
           </div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
-            ইলেকট্রিক্যাল স্টোর লগইন
+            ফারদিন ইলেক্ট্রিক্যাল স্টোর লগইন
           </h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
             আপনার অ্যাকাউন্টে প্রবেশ করতে বিবরণী পূরণ করুন
