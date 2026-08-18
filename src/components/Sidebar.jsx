@@ -33,12 +33,11 @@ function Sidebar({ currentView, setCurrentView, username, userRole, userAllowedM
   const menuItems = ALL_MENU_ITEMS.filter(item => allowedString.split(',').includes(item.id));
 
   // Determine bottom bar items and drawer items for mobile
-  // Bottom bar has max 5 slots.
-  // If we have <= 5 items: show them all.
-  // If we have > 5 items: show first 4 items + "More" (আরও) button.
-  const hasMore = menuItems.length > 5;
-  const bottomBarItems = hasMore ? menuItems.slice(0, 4) : menuItems;
-  const drawerItems = hasMore ? menuItems.slice(4) : [];
+  // Always set hasMore to true so the "More" (আরও) button is always present,
+  // allowing access to Profile Settings and Logout actions on mobile for all roles.
+  const hasMore = true;
+  const bottomBarItems = menuItems.length > 4 ? menuItems.slice(0, 4) : menuItems;
+  const drawerItems = menuItems.length > 4 ? menuItems.slice(4) : [];
 
   const handleMobileNavClick = (viewId) => {
     setCurrentView(viewId);
