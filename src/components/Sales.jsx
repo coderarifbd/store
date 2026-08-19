@@ -456,10 +456,19 @@ function Sales({ activeView, userRole }) {
                       alignItems: 'stretch',
                       textAlign: 'left'
                     }}>
-                      {/* Row 1: Title & Brand (left), Subtotal & Delete (right) */}
+                      {/* Row 1: Delete (left), Title & Brand (middle), Subtotal (right) */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <h4 style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: 0 }}>
+                          <button 
+                            type="button" 
+                            className="btn-icon delete" 
+                            style={{ padding: '0.15rem', color: 'var(--danger)', flexShrink: 0 }}
+                            onClick={() => removeFromCart(item.product_id, item.purchase_id)}
+                            title="কার্ট থেকে বাদ দিন"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                          <h4 style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.name}</span>
                             {item.brand && (
                               <span style={{ fontSize: '0.65rem', backgroundColor: 'var(--bg-secondary)', padding: '0.1rem 0.3rem', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
@@ -468,25 +477,16 @@ function Sales({ activeView, userRole }) {
                             )}
                           </h4>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
                           <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent-color)' }} title="আইটেম সাবটোটাল">
                             ৳{(parseFloat(item.selling_price || 0) * item.quantity).toFixed(2)}
                           </span>
-                          <button 
-                            type="button" 
-                            className="btn-icon delete" 
-                            style={{ padding: '0.2rem', color: 'var(--danger)' }}
-                            onClick={() => removeFromCart(item.product_id, item.purchase_id)}
-                            title="কার্ট থেকে বাদ দিন"
-                          >
-                            <Trash2 size={15} />
-                          </button>
                         </div>
                       </div>
 
-                      {/* Row 2: Batch (left), Price Editor & Qty Pill (right) */}
+                      {/* Row 2: Batch (left - aligned with title), Price Editor & Qty Pill (right) */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, paddingLeft: '1.75rem' }}>
                           ব্যাচ: {item.batch_desc}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
