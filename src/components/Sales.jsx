@@ -449,14 +449,14 @@ function Sales({ activeView, userRole }) {
                     <div key={`${item.product_id}-${item.purchase_id}`} className="cart-item" style={{
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '0.35rem',
+                      gap: '0.4rem',
                       padding: '0.6rem 0',
                       borderBottom: '1px solid var(--border-color)',
                       width: '100%',
                       alignItems: 'stretch',
                       textAlign: 'left'
                     }}>
-                      {/* Row 1: Delete (left), Title & Brand (middle), Subtotal (right) */}
+                      {/* Row 1: Delete (left), Title & Brand (middle), Inputs (right) */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: 0 }}>
                           <button 
@@ -477,32 +477,22 @@ function Sales({ activeView, userRole }) {
                             )}
                           </h4>
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0, marginLeft: '0.5rem' }}>
-                          <span style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent-color)' }} title="আইটেম সাবটোটাল">
-                            ৳{(parseFloat(item.selling_price || 0) * item.quantity).toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Row 2: Batch (left - aligned with title), Price Editor & Qty Pill (right) */}
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, paddingLeft: '1.75rem' }}>
-                          ব্যাচ: {item.batch_desc}
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+                        
+                        {/* Interactive Input Fields on Row 1 Right */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, marginLeft: '0.5rem' }}>
                           {/* Price Input */}
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
-                            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>৳</span>
+                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>৳</span>
                             <input 
                               type="number" 
                               step="0.01"
                               value={item.selling_price}
                               onChange={(e) => updatePrice(item.product_id, item.purchase_id, e.target.value)}
                               style={{ 
-                                width: '58px', 
-                                height: '24px', 
+                                width: '65px', 
+                                height: '28px', 
                                 padding: 0, 
-                                fontSize: '0.8rem', 
+                                fontSize: '0.9rem', 
                                 border: '1px solid var(--border-color)', 
                                 borderRadius: 'var(--radius-sm)',
                                 backgroundColor: 'var(--bg-secondary)',
@@ -510,21 +500,21 @@ function Sales({ activeView, userRole }) {
                                 textAlign: 'center',
                                 fontWeight: '700',
                                 outline: 'none',
-                                lineHeight: '24px'
+                                lineHeight: '28px'
                               }}
                               title="বিক্রয়মূল্য সংশোধন"
                             />
                           </div>
 
                           {/* Qty Pill Selector */}
-                          <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', height: '24px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', overflow: 'hidden', height: '28px' }}>
                             <button 
                               type="button" 
                               style={{ 
                                 border: 'none', 
                                 background: 'var(--bg-secondary)', 
                                 color: 'var(--text-primary)', 
-                                width: '22px', 
+                                width: '24px', 
                                 height: '100%', 
                                 display: 'flex', 
                                 alignItems: 'center', 
@@ -534,14 +524,14 @@ function Sales({ activeView, userRole }) {
                               }}
                               onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity - 1, item.batch_qty)}
                             >
-                              <Minus size={10} />
+                              <Minus size={11} />
                             </button>
                             <input 
                               type="number" 
                               value={item.quantity}
                               onChange={(e) => updateQuantity(item.product_id, item.purchase_id, parseInt(e.target.value || 0), item.batch_qty)}
                               style={{ 
-                                width: '28px', 
+                                width: '30px', 
                                 height: '100%', 
                                 padding: 0, 
                                 textAlign: 'center', 
@@ -551,7 +541,7 @@ function Sales({ activeView, userRole }) {
                                 backgroundColor: 'var(--bg-primary)',
                                 color: 'var(--text-primary)',
                                 fontWeight: '700',
-                                fontSize: '0.85rem',
+                                fontSize: '0.9rem',
                                 outline: 'none'
                               }}
                             />
@@ -561,7 +551,7 @@ function Sales({ activeView, userRole }) {
                                 border: 'none', 
                                 background: 'var(--bg-secondary)', 
                                 color: 'var(--text-primary)', 
-                                width: '22px', 
+                                width: '24px', 
                                 height: '100%', 
                                 display: 'flex', 
                                 alignItems: 'center', 
@@ -571,9 +561,21 @@ function Sales({ activeView, userRole }) {
                               }}
                               onClick={() => updateQuantity(item.product_id, item.purchase_id, item.quantity + 1, item.batch_qty)}
                             >
-                              <Plus size={10} />
+                              <Plus size={11} />
                             </button>
                           </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Batch (left - aligned with title), Subtotal Balance (right) */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, paddingLeft: '1.75rem' }}>
+                          ব্যাচ: {item.batch_desc}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                          <span style={{ fontSize: '0.9rem', fontWeight: '700', color: 'var(--accent-color)' }} title="আইটেম সাবটোটাল">
+                            ৳{(parseFloat(item.selling_price || 0) * item.quantity).toFixed(2)}
+                          </span>
                         </div>
                       </div>
                     </div>
