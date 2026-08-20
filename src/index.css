@@ -465,12 +465,12 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(15, 23, 42, 0.5);
+  background-color: rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 200;
+  z-index: 2000;
 }
 
 .modal-content {
@@ -986,10 +986,28 @@ body {
     display: block !important;
   }
   
+  .modal-overlay {
+    padding: 0.75rem;
+    align-items: center;
+  }
+
   .modal-content {
-    padding: 1.25rem !important;
+    padding: 1.25rem 1.25rem 1.5rem 1.25rem !important;
     max-width: 95% !important;
-    max-height: 92vh !important;
+    max-height: 90vh !important;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto !important;
+  }
+
+  .form-actions {
+    position: sticky;
+    bottom: -1.5rem;
+    background-color: var(--bg-secondary);
+    padding: 0.75rem 0;
+    margin-top: 1.25rem !important;
+    border-top: 1px solid var(--border-color);
+    z-index: 10;
   }
   
   .mobile-card-list-view {

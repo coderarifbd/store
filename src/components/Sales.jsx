@@ -973,7 +973,7 @@ function Sales({ activeView, userRole }) {
 
       {/* Custom Confirmation Modal */}
       {showConfirmModal && (
-        <div className="modal-overlay" style={{ zIndex: 1100 }}>
+        <div className="modal-overlay" style={{ zIndex: 2100 }}>
           <div className="modal-content" style={{ maxWidth: '400px', textAlign: 'center', padding: '2rem' }}>
             <div style={{ color: 'var(--danger)', marginBottom: '1rem' }}>
               <AlertTriangle size={48} style={{ margin: '0 auto' }} />
