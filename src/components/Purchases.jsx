@@ -40,6 +40,7 @@ function Purchases({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('invoices'); // 'invoices' or 'items'
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showInvoiceDetailModal, setShowInvoiceDetailModal] = useState(false);
+  const [selectedInvoices, setSelectedInvoices] = useState([]);
 
   const [showEditInvoiceModal, setShowEditInvoiceModal] = useState(false);
   const [selectedInvoiceToEdit, setSelectedInvoiceToEdit] = useState(null);
@@ -270,6 +271,46 @@ function Purchases({ activeView, userRole }) {
     setShowConfirmModal(true);
   };
 
+  const toggleSelectInvoice = (invoiceNo) => {
+    setSelectedInvoices(prev => {
+      if (prev.includes(invoiceNo)) {
+        return prev.filter(no => no !== invoiceNo);
+      } else {
+        return [...prev, invoiceNo];
+      }
+    });
+  };
+
+  const toggleSelectAllInvoices = () => {
+    const allVisibleSelected = invoicesList.every(invoice => selectedInvoices.includes(invoice.invoice_no));
+    if (allVisibleSelected) {
+      setSelectedInvoices(prev => prev.filter(no => !invoicesList.some(inv => inv.invoice_no === no)));
+    } else {
+      setSelectedInvoices(prev => {
+        const toAdd = invoicesList.filter(inv => !prev.includes(inv.invoice_no)).map(inv => inv.invoice_no);
+        return [...prev, ...toAdd];
+      });
+    }
+  };
+
+  const handleBulkDeleteInvoices = () => {
+    setConfirmModalMsg(`আপনি কি নিশ্চিতভাবে নির্বাচিত ${selectedInvoices.length}টি চালান ডিলিট করতে চান? এর ফলে এই চালানগুলোর সব পণ্যের স্টক ডেটাবেজ থেকে পুনরুদ্ধার করা হবে!`);
+    setConfirmAction(() => async () => {
+      try {
+        for (const invoiceNo of selectedInvoices) {
+          const res = await fetch(`/api/purchases/invoice/${invoiceNo}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error(`Failed to delete invoice ${invoiceNo}`);
+        }
+        alert('নির্বাচিত ক্রয় চালানগুলো সফলভাবে ডিলিট করা হয়েছে এবং স্টক এডজাস্ট করা হয়েছে।');
+        setSelectedInvoices([]);
+        fetchData();
+      } catch (err) {
+        alert(err.message || 'চালান ডিলিট করতে সমস্যা হয়েছে।');
+      }
+    });
+    setShowConfirmModal(true);
+  };
+
   const openEditInvoiceModal = (invoice) => {
     setSelectedInvoiceToEdit(invoice);
     setEditInvoiceItems(invoice.items);
@@ -473,18 +514,28 @@ function Purchases({ activeView, userRole }) {
       </div>
 
       {/* Filter and Search controls */}
-      <div className="actions-bar card" style={{ padding: '1rem', marginBottom: '1.5rem' }}>
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+      <div className="actions-bar card" style={{ padding: '1rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1 }}>
           <Search size={18} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
           <input
             type="text"
             className="search-input"
-            style={{ paddingLeft: '2.25rem' }}
+            style={{ paddingLeft: '2.25rem', width: '100%' }}
             placeholder={activeSubTab === 'invoices' ? "চালান নং বা বিক্রেতার নাম দিয়ে সার্চ করুন..." : "পণ্য বা বিক্রেতার নাম দিয়ে সার্চ করুন..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+        {activeSubTab === 'invoices' && selectedInvoices.length > 0 && userRole === 'admin' && (
+          <button 
+            type="button" 
+            className="btn btn-danger" 
+            onClick={handleBulkDeleteInvoices}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0, padding: '0.6rem 1rem' }}
+          >
+            <Trash2 size={16} /> নির্বাচিত {selectedInvoices.length}টি মুছুন
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -495,6 +546,14 @@ function Purchases({ activeView, userRole }) {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input 
+                      type="checkbox"
+                      checked={invoicesList.length > 0 && invoicesList.every(inv => selectedInvoices.includes(inv.invoice_no))}
+                      onChange={toggleSelectAllInvoices}
+                      style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    />
+                  </th>
                   <th>চালান নং</th>
                   <th>তারিখ</th>
                   <th>বিক্রেতা/সাপ্লায়ার</th>
@@ -506,7 +565,7 @@ function Purchases({ activeView, userRole }) {
               <tbody>
                 {invoicesList.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                       কোনো ক্রয়ের চালান পাওয়া যায়নি।
                     </td>
                   </tr>
@@ -517,8 +576,17 @@ function Purchases({ activeView, userRole }) {
                       month: 'long',
                       day: 'numeric'
                     });
+                    const isSelected = selectedInvoices.includes(invoice.invoice_no);
                     return (
-                      <tr key={invoice.invoice_no}>
+                      <tr key={invoice.invoice_no} className={isSelected ? 'selected-row' : ''}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input 
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectInvoice(invoice.invoice_no)}
+                            style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                          />
+                        </td>
                         <td><strong>#{invoice.invoice_no}</strong></td>
                         <td><span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{date}</span></td>
                         <td>{invoice.vendor_name}</td>

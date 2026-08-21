@@ -377,6 +377,13 @@ body {
   background-color: var(--bg-primary);
 }
 
+.data-table tr.selected-row td {
+  background-color: rgba(37, 99, 235, 0.08);
+}
+.data-table tr.selected-row:hover td {
+  background-color: rgba(37, 99, 235, 0.12);
+}
+
 /* Badges */
 .badge {
   display: inline-flex;
