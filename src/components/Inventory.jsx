@@ -388,6 +388,7 @@ function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTe
           <table className="data-table">
             <thead>
               <tr>
+                <th style={{ width: '50px', textAlign: 'center' }}>SL</th>
                 <th>পণ্যের নাম</th>
                 <th>ক্যাটাগরি</th>
                 <th>ব্র্যান্ড/কোম্পানি</th>
@@ -402,15 +403,16 @@ function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTe
             <tbody>
               {filteredProducts.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                  <td colSpan="10" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                     কোনো পণ্য পাওয়া যায়নি।
                   </td>
                 </tr>
               ) : (
-                filteredProducts.map((product) => {
+                filteredProducts.map((product, index) => {
                   const isLow = product.stock_quantity <= product.reorder_level;
                   return (
                     <tr key={product.id} style={{ opacity: product.is_discontinued ? 0.55 : 1 }}>
+                      <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontWeight: '600' }}>{index + 1}</td>
                       <td>
                         <strong>{product.name}</strong>
                         {product.is_discontinued && (
