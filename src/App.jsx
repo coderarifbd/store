@@ -9,7 +9,7 @@ import Reports from './components/Reports';
 import Login from './components/Login';
 import UsersManagement from './components/Users';
 
-// Intercept global fetch to inject JWT bearer tokens and handle auto-logout on session expiry (401/403)
+// Intercept global fetch to inject JWT bearer tokens and handle auto-logout on session expiry (401)
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
   const token = localStorage.getItem('store_token');
@@ -20,7 +20,7 @@ window.fetch = async function (url, options = {}) {
     };
   }
   const response = await originalFetch(url, options);
-  if (response.status === 401 || response.status === 403) {
+  if (response.status === 401) {
     localStorage.removeItem('store_token');
     localStorage.removeItem('store_user');
     if (token) {
@@ -129,15 +129,15 @@ function App() {
 
       {/* Main View Panel */}
       <main className="main-content">
-        <div style={{ display: currentView === 'dashboard' ? 'block' : 'none' }}>
+        {currentView === 'dashboard' && (
           <Dashboard 
             setActiveTab={setCurrentView} 
             activeView={currentView} 
             userRole={user?.role} 
             setInventorySearchTerm={setInventorySearchTerm} 
           />
-        </div>
-        <div style={{ display: currentView === 'inventory' ? 'block' : 'none' }}>
+        )}
+        {currentView === 'inventory' && (
           <Inventory 
             activeView={currentView} 
             userRole={user?.role} 
@@ -145,25 +145,21 @@ function App() {
             initialSearchTerm={inventorySearchTerm} 
             setInitialSearchTerm={setInventorySearchTerm} 
           />
-        </div>
-        <div style={{ display: currentView === 'purchases' ? 'block' : 'none' }}>
-          <Purchases activeView={currentView} userRole={user?.role} />
-        </div>
-        <div style={{ display: currentView === 'sales' ? 'block' : 'none' }}>
-          <Sales activeView={currentView} userRole={user?.role} />
-        </div>
-        <div style={{ display: currentView === 'expenses' ? 'block' : 'none' }}>
-          <Expenses activeView={currentView} userRole={user?.role} />
-        </div>
-        {user?.role === 'admin' && (
-          <div style={{ display: currentView === 'reports' ? 'block' : 'none' }}>
-            <Reports activeView={currentView} />
-          </div>
         )}
-        {user?.role === 'admin' && (
-          <div style={{ display: currentView === 'users' ? 'block' : 'none' }}>
-            <UsersManagement />
-          </div>
+        {currentView === 'purchases' && (
+          <Purchases activeView={currentView} userRole={user?.role} />
+        )}
+        {currentView === 'sales' && (
+          <Sales activeView={currentView} userRole={user?.role} />
+        )}
+        {currentView === 'expenses' && (
+          <Expenses activeView={currentView} userRole={user?.role} />
+        )}
+        {user?.role === 'admin' && currentView === 'reports' && (
+          <Reports activeView={currentView} />
+        )}
+        {user?.role === 'admin' && currentView === 'users' && (
+          <UsersManagement />
         )}
       </main>
 
