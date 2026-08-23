@@ -408,21 +408,25 @@ function Reports({ activeView }) {
                         <th style={{ width: '80px', textAlign: 'center' }}>দিন (Day)</th>
                         <th>তারিখ (Date)</th>
                         <th style={{ textAlign: 'right' }}>বিক্রি পরিমাণ (Total Sales)</th>
+                        <th style={{ textAlign: 'right' }}>অর্জিত লাভ (Gross Profit)</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(() => {
                         const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
                         const salesMap = {};
+                        const profitMap = {};
                         monthlyData.daily.sales.forEach(s => {
                           const day = new Date(s.date).getDate();
                           salesMap[day] = (salesMap[day] || 0) + parseFloat(s.amount);
+                          profitMap[day] = (profitMap[day] || 0) + parseFloat(s.profit || 0);
                         });
 
                         const rows = [];
                         for (let day = 1; day <= daysInMonth; day++) {
                           const sales = salesMap[day] || 0;
-                          rows.push({ day, sales });
+                          const profit = profitMap[day] || 0;
+                          rows.push({ day, sales, profit });
                         }
 
                         return rows.map((r) => {
@@ -434,9 +438,16 @@ function Reports({ activeView }) {
                               <td style={{ 
                                 textAlign: 'right', 
                                 fontWeight: hasSales ? '700' : 'normal', 
-                                color: hasSales ? 'var(--success)' : 'var(--text-muted)' 
+                                color: hasSales ? 'var(--accent-color)' : 'var(--text-muted)' 
                               }}>
                                 ৳{r.sales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                              <td style={{ 
+                                textAlign: 'right', 
+                                fontWeight: hasSales ? '700' : 'normal', 
+                                color: hasSales ? (r.profit >= 0 ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)' 
+                              }}>
+                                ৳{r.profit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                               </td>
                             </tr>
                           );
@@ -473,9 +484,10 @@ function Reports({ activeView }) {
                     <tr>
                       <th>মাস</th>
                       <th style={{ textAlign: 'right' }}>বিক্রি (৳)</th>
+                      <th style={{ textAlign: 'right' }}>অর্জিত লাভ (৳)</th>
                       <th style={{ textAlign: 'right' }}>ক্রয় (৳)</th>
                       <th style={{ textAlign: 'right' }}>ব্যয় (৳)</th>
-                      <th style={{ textAlign: 'right' }}>লাভ/ক্ষতি (৳)</th>
+                      <th style={{ textAlign: 'right' }}>নীট লাভ/ক্ষতি (৳)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -499,6 +511,9 @@ function Reports({ activeView }) {
                         <tr key={i}>
                           <td><strong>{monthLabel}</strong></td>
                           <td style={{ textAlign: 'right' }}>৳{totalSales.toFixed(2)}</td>
+                          <td style={{ textAlign: 'right', fontWeight: '600', color: salesProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                            ৳{salesProfit.toFixed(2)}
+                          </td>
                           <td style={{ textAlign: 'right' }}>৳{totalPurchases.toFixed(2)}</td>
                           <td style={{ textAlign: 'right' }}>৳{expAmt.toFixed(2)}</td>
                           <td style={{ textAlign: 'right', fontWeight: 'bold', color: netProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
