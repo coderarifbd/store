@@ -395,6 +395,57 @@ function Reports({ activeView }) {
                   </div>
                 </div>
               </div>
+
+              {/* Daily Sales Table */}
+              <div className="card" style={{ marginTop: '2rem', padding: '1.5rem' }}>
+                <h3 style={{ fontSize: '1.1rem', marginBottom: '1.25rem', fontWeight: '600' }}>
+                  দৈনিক বিক্রয় বিবরণী ({MONTHS_BN.find(m => m.value === selectedMonth)?.label.split(' ')[0]} {selectedYear})
+                </h3>
+                <div className="table-container">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th style={{ width: '80px', textAlign: 'center' }}>দিন (Day)</th>
+                        <th>তারিখ (Date)</th>
+                        <th style={{ textAlign: 'right' }}>বিক্রি পরিমাণ (Total Sales)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+                        const salesMap = {};
+                        monthlyData.daily.sales.forEach(s => {
+                          const day = new Date(s.date).getDate();
+                          salesMap[day] = (salesMap[day] || 0) + parseFloat(s.amount);
+                        });
+
+                        const rows = [];
+                        for (let day = 1; day <= daysInMonth; day++) {
+                          const sales = salesMap[day] || 0;
+                          rows.push({ day, sales });
+                        }
+
+                        return rows.map((r) => {
+                          const hasSales = r.sales > 0;
+                          return (
+                            <tr key={r.day} style={{ opacity: hasSales ? 1 : 0.6 }}>
+                              <td style={{ textAlign: 'center', fontWeight: 'bold' }}>{r.day}</td>
+                              <td>{`${String(r.day).padStart(2, '0')}/${String(selectedMonth).padStart(2, '0')}/${selectedYear}`}</td>
+                              <td style={{ 
+                                textAlign: 'right', 
+                                fontWeight: hasSales ? '700' : 'normal', 
+                                color: hasSales ? 'var(--success)' : 'var(--text-muted)' 
+                              }}>
+                                ৳{r.sales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
 
