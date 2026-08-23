@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, UserPlus, Trash2, Shield } from 'lucide-react';
+import { Users, UserPlus, Trash2, Shield, Edit2, X } from 'lucide-react';
 
 const ALL_MODULES = [
   { id: 'dashboard', label: 'ড্যাশবোর্ড (Dashboard)' },
@@ -21,6 +21,12 @@ function UsersManagement() {
   const [role, setRole] = useState('employee');
   const [selectedModules, setSelectedModules] = useState(['dashboard', 'inventory', 'purchases', 'sales']);
   const [submitting, setSubmitting] = useState(false);
+
+  // Edit modal states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editRole, setEditRole] = useState('employee');
+  const [editSelectedModules, setEditSelectedModules] = useState([]);
 
   // Get current user id from localStorage token decode or state
   const currentUser = JSON.parse(localStorage.getItem('store_user') || '{}');
@@ -95,6 +101,61 @@ function UsersManagement() {
       fetchUsers();
     } catch (err) {
       alert(err.message || 'ইউজার তৈরি করতে সমস্যা হয়েছে');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEditModuleToggle = (moduleId) => {
+    setEditSelectedModules(prev => {
+      if (prev.includes(moduleId)) {
+        return prev.filter(m => m !== moduleId);
+      } else {
+        return [...prev, moduleId];
+      }
+    });
+  };
+
+  const openEditModal = (user) => {
+    setEditingUser(user);
+    setEditRole(user.role);
+    setEditSelectedModules(user.allowed_modules ? user.allowed_modules.split(',') : []);
+    setShowEditModal(true);
+  };
+
+  const handleUpdateUserAccess = async (e) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    if (editRole === 'employee' && editSelectedModules.length === 0) {
+      alert('কর্মচারীর জন্য অন্তত একটি মডিউলের এক্সেস সিলেক্ট করুন');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await fetch(`/api/users/${editingUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: editRole,
+          allowed_modules: editRole === 'admin' 
+            ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+            : editSelectedModules.join(',')
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || 'ইউজার এক্সেস আপডেট করতে সমস্যা হয়েছে');
+      }
+
+      alert('ইউজার এক্সেস সফলভাবে আপডেট করা হয়েছে!');
+      setShowEditModal(false);
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) {
+      alert(err.message || 'ইউজার এক্সেস আপডেট করতে সমস্যা হয়েছে');
     } finally {
       setSubmitting(false);
     }
@@ -192,15 +253,26 @@ function UsersManagement() {
                       </td>
                       <td>{new Date(u.created_at).toLocaleDateString('bn-BD')}</td>
                       <td style={{ textAlign: 'center' }}>
-                        <button 
-                          className="btn-icon delete"
-                          onClick={() => handleDeleteUser(u.id, u.username)}
-                          disabled={u.username === 'admin' || isSelf}
-                          title={u.username === 'admin' ? 'admin ইউজার ডিলিট করা সম্ভব নয়' : isSelf ? 'নিজের অ্যাকাউন্ট ডিলিট করতে পারবেন না' : 'ইউজার ডিলিট করুন'}
-                          style={{ opacity: (u.username === 'admin' || isSelf) ? 0.3 : 1 }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                          <button 
+                            className="btn-icon"
+                            onClick={() => openEditModal(u)}
+                            disabled={u.username === 'admin'}
+                            title={u.username === 'admin' ? 'admin ইউজার এর এক্সেস পরিবর্তনযোগ্য নয়' : 'ইউজার এক্সেস পরিবর্তন করুন'}
+                            style={{ opacity: u.username === 'admin' ? 0.3 : 1 }}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button 
+                            className="btn-icon delete"
+                            onClick={() => handleDeleteUser(u.id, u.username)}
+                            disabled={u.username === 'admin' || isSelf}
+                            title={u.username === 'admin' ? 'admin ইউজার ডিলিট করা সম্ভব নয়' : isSelf ? 'নিজের অ্যাকাউন্ট ডিলিট করতে পারবেন না' : 'ইউজার ডিলিট করুন'}
+                            style={{ opacity: (u.username === 'admin' || isSelf) ? 0.3 : 1 }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -308,6 +380,97 @@ function UsersManagement() {
           </form>
         </div>
       </div>
+
+      {/* Edit Access Modal */}
+      {showEditModal && editingUser && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '500px', padding: '2.5rem' }}>
+            <button 
+              type="button" 
+              className="btn-icon" 
+              style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', color: 'var(--text-muted)' }} 
+              onClick={() => {
+                setShowEditModal(false);
+                setEditingUser(null);
+              }}
+              title="বন্ধ করুন"
+            >
+              <X size={20} />
+            </button>
+            
+            <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+              <h2 style={{ fontSize: '1.4rem', fontWeight: '700', color: 'var(--text-primary)' }}>ইউজার এক্সেস পরিবর্তন</h2>
+              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                ব্যবহারকারী: <strong>{editingUser.username}</strong>
+              </p>
+            </div>
+
+            <form onSubmit={handleUpdateUserAccess}>
+              <div className="form-group">
+                <label>রোল (এক্সেস লেভেল) *</label>
+                <select 
+                  className="form-control"
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value)}
+                  disabled={editingUser.username === 'admin'}
+                >
+                  <option value="admin">এডমিন (Admin)</option>
+                  <option value="employee">কর্মচারী (Employee)</option>
+                </select>
+              </div>
+
+              {editRole === 'employee' && (
+                <div className="form-group">
+                  <label style={{ marginBottom: '0.75rem' }}>মডিউল এক্সেস নির্ধারণ করুন *</label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem', backgroundColor: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                    {ALL_MODULES.map(m => (
+                      <label key={m.id} style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.5rem', 
+                        margin: 0,
+                        cursor: 'pointer',
+                        fontSize: '0.9rem',
+                        color: 'var(--text-primary)'
+                      }}>
+                        <input 
+                          type="checkbox" 
+                          checked={editSelectedModules.includes(m.id)}
+                          onChange={() => handleEditModuleToggle(m.id)}
+                          style={{ width: 'auto', cursor: 'pointer' }}
+                        />
+                        {m.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ flex: 1, display: 'flex', justifyContent: 'center' }}
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingUser(null);
+                  }}
+                >
+                  বাতিল
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ flex: 1, display: 'flex', justifyContent: 'center' }}
+                  disabled={submitting}
+                >
+                  {submitting ? 'আপডেট হচ্ছে...' : 'সংরক্ষণ করুন'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

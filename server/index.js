@@ -251,6 +251,36 @@ app.delete('/api/users/:id', requireAdmin, async (req, res) => {
   }
 });
 
+// Update user role and modules (Admin only)
+app.put('/api/users/:id', requireAdmin, async (req, res) => {
+  const { id } = req.params;
+  const userIdToUpdate = parseInt(id);
+  const { role, allowed_modules } = req.body;
+
+  try {
+    const checkUser = await pool.query('SELECT * FROM users WHERE id = $1', [userIdToUpdate]);
+    if (checkUser.rows.length === 0) {
+      return res.status(404).json({ error: 'ইউজার খুঁজে পাওয়া যায়নি' });
+    }
+
+    if (checkUser.rows[0].username === 'admin' && role !== 'admin') {
+      return res.status(400).json({ error: 'ডিফল্ট admin অ্যাকাউন্ট এর রোল পরিবর্তন করা সম্ভব নয়' });
+    }
+
+    await pool.query(
+      `UPDATE users 
+       SET role = $1, allowed_modules = $2 
+       WHERE id = $3`,
+      [role, allowed_modules, userIdToUpdate]
+    );
+
+    res.json({ message: 'User updated successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error updating user access' });
+  }
+});
+
 // ==========================================
 // BRANDS ENDPOINTS
 // ==========================================
