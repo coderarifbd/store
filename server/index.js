@@ -1738,6 +1738,91 @@ app.post('/api/cash/withdraw', requirePermission('cash'), async (req, res) => {
   }
 });
 
+// Edit a manual cash transaction
+app.put('/api/cash/transaction/:id', requirePermission('cash'), async (req, res) => {
+  const { id } = req.params;
+  const { amount, description } = req.body;
+
+  if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+    return res.status(400).json({ error: 'সঠিক পরিমাণ প্রদান করুন' });
+  }
+
+  try {
+    // 1. Verify transaction exists and is manual
+    const transCheck = await pool.query('SELECT * FROM cash_transactions WHERE id = $1', [id]);
+    if (transCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'লেনদেন খুঁজে পাওয়া যায়নি' });
+    }
+
+    const trans = transCheck.rows[0];
+    if (trans.source !== 'capital_addition' && trans.source !== 'capital_withdrawal') {
+      return res.status(400).json({ error: 'শুধুমাত্র ম্যানুয়াল ক্যাশ এন্ট্রি এডিট করা যাবে' });
+    }
+
+    // If it's a withdrawal, verify if enough cash remains if amount changes
+    if (trans.source === 'capital_withdrawal') {
+      const balanceRes = await pool.query(
+        `SELECT SUM(CASE WHEN type = 'inflow' THEN amount ELSE -amount END) as balance FROM cash_transactions`
+      );
+      const balance = parseFloat(balanceRes.rows[0].balance || 0);
+      const diff = parseFloat(amount) - parseFloat(trans.amount);
+      if (balance < diff) {
+        return res.status(400).json({ error: 'পর্যাপ্ত ক্যাশ ব্যালেন্স নেই' });
+      }
+    }
+
+    // 2. Update transaction
+    const result = await pool.query(
+      `UPDATE cash_transactions 
+       SET amount = $1, description = $2 
+       WHERE id = $3 RETURNING *`,
+      [parseFloat(amount), description || '', id]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error updating cash transaction' });
+  }
+});
+
+// Delete a manual cash transaction
+app.delete('/api/cash/transaction/:id', requirePermission('cash'), async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 1. Verify transaction exists and is manual
+    const transCheck = await pool.query('SELECT * FROM cash_transactions WHERE id = $1', [id]);
+    if (transCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'লেনদেন খুঁজে পাওয়া যায়নি' });
+    }
+
+    const trans = transCheck.rows[0];
+    if (trans.source !== 'capital_addition' && trans.source !== 'capital_withdrawal') {
+      return res.status(400).json({ error: 'শুধুমাত্র ম্যানুয়াল ক্যাশ এন্ট্রি ডিলিট করা যাবে' });
+    }
+
+    // If deleting a capital addition, verify if remaining balance is enough
+    if (trans.source === 'capital_addition') {
+      const balanceRes = await pool.query(
+        `SELECT SUM(CASE WHEN type = 'inflow' THEN amount ELSE -amount END) as balance FROM cash_transactions`
+      );
+      const balance = parseFloat(balanceRes.rows[0].balance || 0);
+      if (balance < parseFloat(trans.amount)) {
+        return res.status(400).json({ error: 'উক্ত মূলধন ডিলিট করা সম্ভব নয় কারণ বর্তমান ক্যাশ পর্যাপ্ত নেই' });
+      }
+    }
+
+    // 2. Delete transaction
+    await pool.query('DELETE FROM cash_transactions WHERE id = $1', [id]);
+
+    res.json({ message: 'Manual cash entry deleted successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error deleting cash transaction' });
+  }
+});
+
 // Start Express server
 if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
   const PORT = process.env.PORT || 5000;

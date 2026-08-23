@@ -8,7 +8,10 @@ import {
   Calendar, 
   RefreshCw,
   Search,
-  AlertCircle
+  AlertCircle,
+  Edit2,
+  Trash2,
+  X
 } from 'lucide-react';
 
 function CashLedger({ activeView, userRole }) {
@@ -26,6 +29,12 @@ function CashLedger({ activeView, userRole }) {
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawDesc, setWithdrawDesc] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Edit modal states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState(null);
+  const [editAmount, setEditAmount] = useState('');
+  const [editDesc, setEditDesc] = useState('');
 
   // Search, Filter & Sort states
   const [filterType, setFilterType] = useState('all'); // 'all', 'inflow', 'outflow'
@@ -136,6 +145,71 @@ function CashLedger({ activeView, userRole }) {
       alert(err.message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleOpenEditModal = (t) => {
+    setEditingTransaction(t);
+    setEditAmount(t.amount.toString());
+    setEditDesc(t.description || '');
+    setShowEditModal(true);
+  };
+
+  const handleUpdateTransaction = async (e) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+
+    if (!editAmount || isNaN(editAmount) || parseFloat(editAmount) <= 0) {
+      alert('সঠিক পরিমাণ উল্লেখ করুন');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await fetch(`/api/cash/transaction/${editingTransaction.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: parseFloat(editAmount),
+          description: editDesc.trim()
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'লেনদেন আপডেট করতে সমস্যা হয়েছে');
+      }
+
+      alert('লেনদেন সফলভাবে আপডেট করা হয়েছে!');
+      setShowEditModal(false);
+      setEditingTransaction(null);
+      fetchData();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (id) => {
+    if (!window.confirm('আপনি কি নিশ্চিতভাবে এই ম্যানুয়াল ক্যাশ লেনদেনটি ডিলিট করতে চান? এর ফলে ক্যাশ ব্যালেন্স পুনরায় সমন্বয় হবে।')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/cash/transaction/${id}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'লেনদেন ডিলিট করতে সমস্যা হয়েছে');
+      }
+
+      alert('লেনদেন সফলভাবে ডিলিট করা হয়েছে!');
+      fetchData();
+    } catch (err) {
+      alert(err.message);
     }
   };
 
@@ -425,8 +499,30 @@ function CashLedger({ activeView, userRole }) {
                         }}>
                           ৳ {parseFloat(t.runningBalance).toFixed(2)}
                         </td>
-                        <td style={{ textAlign: 'center', fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>
-                          {isManual ? 'Manual' : 'Auto-synced'}
+                        <td style={{ textAlign: 'center' }}>
+                          {isManual ? (
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Manual</span>
+                              <button 
+                                className="btn-icon" 
+                                onClick={() => handleOpenEditModal(t)} 
+                                style={{ padding: '2px', cursor: 'pointer', border: 'none', background: 'none' }}
+                                title="এডিট করুন"
+                              >
+                                <Edit2 size={12} style={{ color: 'var(--accent-color)' }} />
+                              </button>
+                              <button 
+                                className="btn-icon delete" 
+                                onClick={() => handleDeleteTransaction(t.id)} 
+                                style={{ padding: '2px', cursor: 'pointer', border: 'none', background: 'none' }}
+                                title="ডিলিট করুন"
+                              >
+                                <Trash2 size={12} style={{ color: 'var(--danger)' }} />
+                              </button>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>Auto-synced</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -520,6 +616,80 @@ function CashLedger({ activeView, userRole }) {
               >
                 {submitting ? 'সংরক্ষণ হচ্ছে...' : 'ক্যাশ উত্তোলন করুন'}
               </button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Edit Transaction Modal */}
+      {showEditModal && editingTransaction && (
+        <div className="modal-overlay" style={{ zIndex: 1000 }}>
+          <div className="modal-content" style={{ maxWidth: '450px' }}>
+            <div className="modal-header">
+              <h2>ম্যানুয়াল লেনদেন সংশোধন</h2>
+              <button 
+                className="btn-icon" 
+                onClick={() => {
+                  setShowEditModal(false);
+                  setEditingTransaction(null);
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleUpdateTransaction}>
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>লেনদেন ধরণ</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={editingTransaction.source === 'capital_addition' ? 'মূলধন যোগ (Inflow)' : 'ক্যাশ উত্তোলন (Outflow)'} 
+                  disabled 
+                  style={{ backgroundColor: 'var(--bg-secondary)', cursor: 'not-allowed' }}
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>পরিমাণ (৳) *</label>
+                <input 
+                  type="number" 
+                  step="any"
+                  className="form-control" 
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1.5rem' }}>
+                <label>বিবরণ / উৎস *</label>
+                <input 
+                  type="text" 
+                  className="form-control" 
+                  value={editDesc}
+                  onChange={(e) => setEditDesc(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => {
+                    setShowEditModal(false);
+                    setEditingTransaction(null);
+                  }}
+                >
+                  বাতিল
+                </button>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary"
+                  disabled={submitting}
+                >
+                  {submitting ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}
+                </button>
+              </div>
             </form>
           </div>
         </div>
