@@ -47,6 +47,24 @@ function Reports({ activeView }) {
   const [reportType, setReportType] = useState('monthly'); // 'monthly', 'yearly', 'analytics'
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+
+  const getComparisonText = (current, previous) => {
+    if (!previous || previous === 0) {
+      if (current === 0) return 'গত মাসে কোনো বিক্রি ছিল না';
+      return 'নতুন বিক্রি (গত মাসে ছিল না)';
+    }
+    const diff = current - previous;
+    const pct = ((Math.abs(diff) / previous) * 100).toFixed(0);
+    const formattedDiff = Math.abs(diff).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    
+    if (diff > 0) {
+      return `+৳${formattedDiff} (গত মাসের চেয়ে ${pct}% বেশি)`;
+    } else if (diff < 0) {
+      return `-৳${formattedDiff} (গত মাসের চেয়ে ${pct}% কম)`;
+    } else {
+      return 'গত মাসের সমান বিক্রি';
+    }
+  };
   
   // Data states
   const [monthlyData, setMonthlyData] = useState(null);
@@ -307,6 +325,28 @@ function Reports({ activeView }) {
                 <div className="card">
                   <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>মোট বিক্রি (৳)</h3>
                   <div className="value" style={{ fontSize: '1.5rem', color: 'var(--accent-color)' }}>৳{monthlyData.summary.sales.toLocaleString('en-IN')}</div>
+                  {monthlyData.summary.last_month_sales !== undefined && (
+                    <div 
+                      style={{ 
+                        fontSize: '11px', 
+                        fontWeight: '600',
+                        marginTop: '4px',
+                        color: (monthlyData.summary.sales - monthlyData.summary.last_month_sales) > 0 
+                          ? 'var(--success)' 
+                          : (monthlyData.summary.sales - monthlyData.summary.last_month_sales) < 0 
+                            ? 'var(--danger)' 
+                            : 'var(--text-muted)'
+                      }}
+                    >
+                      {getComparisonText(monthlyData.summary.sales, monthlyData.summary.last_month_sales)}
+                    </div>
+                  )}
+                </div>
+                <div className="card">
+                  <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>মোট অর্জিত লাভ (৳)</h3>
+                  <div className="value" style={{ fontSize: '1.5rem', color: monthlyData.summary.profit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                    ৳{monthlyData.summary.profit.toLocaleString('en-IN')}
+                  </div>
                 </div>
                 <div className="card">
                   <h3 style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>পণ্য ক্রয় খরচ (৳)</h3>

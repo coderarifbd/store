@@ -63,11 +63,29 @@ function Dashboard({ setActiveTab, activeView, setInventorySearchTerm }) {
 
   const { stock, current_month } = summary || {
     stock: { total_items: 0, total_valuation: 0, low_stock_count: 0 },
-    current_month: { sales_revenue: 0, sales_profit: 0, purchases_total: 0, employee_expenses: 0, shop_expenses: 0 }
+    current_month: { sales_revenue: 0, sales_profit: 0, last_month_sales_revenue: 0, purchases_total: 0, employee_expenses: 0, shop_expenses: 0 }
   };
 
   const totalExpenses = current_month.employee_expenses + current_month.shop_expenses;
   const netProfit = current_month.sales_profit - totalExpenses;
+
+  const getComparisonText = (current, previous) => {
+    if (!previous || previous === 0) {
+      if (current === 0) return 'গত মাসে কোনো বিক্রি ছিল না';
+      return 'নতুন বিক্রি শুরু হয়েছে (গত মাসে ছিল না)';
+    }
+    const diff = current - previous;
+    const pct = ((Math.abs(diff) / previous) * 100).toFixed(0);
+    const formattedDiff = Math.abs(diff).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+    
+    if (diff > 0) {
+      return `+৳${formattedDiff} (গত মাসের চেয়ে ${pct}% বেশি)`;
+    } else if (diff < 0) {
+      return `-৳${formattedDiff} (গত মাসের চেয়ে ${pct}% কম)`;
+    } else {
+      return 'গত মাসের সমান বিক্রি';
+    }
+  };
 
   return (
     <div>
@@ -101,9 +119,38 @@ function Dashboard({ setActiveTab, activeView, setInventorySearchTerm }) {
           <div className="stat-info">
             <h3>মোট বিক্রি (চলতি মাস)</h3>
             <div className="value">৳{current_month.sales_revenue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+            {current_month.last_month_sales_revenue !== undefined && (
+              <div 
+                style={{ 
+                  fontSize: '11px', 
+                  fontWeight: '600',
+                  marginTop: '4px',
+                  color: (current_month.sales_revenue - current_month.last_month_sales_revenue) > 0 
+                    ? 'var(--success)' 
+                    : (current_month.sales_revenue - current_month.last_month_sales_revenue) < 0 
+                      ? 'var(--danger)' 
+                      : 'var(--text-muted)'
+                }}
+              >
+                {getComparisonText(current_month.sales_revenue, current_month.last_month_sales_revenue)}
+              </div>
+            )}
           </div>
           <div className="stat-icon sales">
             <TrendingUp size={24} />
+          </div>
+        </div>
+
+        {/* Gross Profit */}
+        <div className="card stat-card">
+          <div className="stat-info">
+            <h3>মোট অর্জিত লাভ (চলতি মাস)</h3>
+            <div className="value" style={{ color: current_month.sales_profit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+              ৳{current_month.sales_profit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </div>
+          </div>
+          <div className="stat-icon profit" style={{ backgroundColor: current_month.sales_profit >= 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)' }}>
+            <DollarSign size={24} style={{ color: current_month.sales_profit >= 0 ? 'var(--success)' : 'var(--danger)' }} />
           </div>
         </div>
 

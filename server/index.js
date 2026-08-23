@@ -1271,6 +1271,19 @@ app.get('/api/reports/summary', async (req, res) => {
     const nextMonthYear = currentMonth === 12 ? currentYear + 1 : currentYear;
     const monthEnd = `${nextMonthYear}-${String(nextMonth).padStart(2, '0')}-01 00:00:00`;
 
+    // Last month date bounds
+    const lastMonth = currentMonth === 1 ? 12 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 1 ? currentYear - 1 : currentYear;
+    const lastMonthStart = `${lastMonthYear}-${String(lastMonth).padStart(2, '0')}-01 00:00:00`;
+    const lastMonthEnd = monthStart;
+
+    // Last month sales revenue
+    const lastMonthSalesResult = await pool.query(`
+      SELECT SUM(total_amount) as revenue
+      FROM sales
+      WHERE sale_date >= $1 AND sale_date < $2
+    `, [lastMonthStart, lastMonthEnd]);
+
     // 3. Current month sales revenue and profit
     const salesResult = await pool.query(`
       SELECT 
@@ -1342,6 +1355,7 @@ app.get('/api/reports/summary', async (req, res) => {
       current_month: {
         sales_revenue: parseFloat(salesResult.rows[0].revenue || 0),
         sales_profit: parseFloat(salesResult.rows[0].profit || 0),
+        last_month_sales_revenue: parseFloat(lastMonthSalesResult.rows[0].revenue || 0),
         purchases_total: parseFloat(purchasesResult.rows[0].total || 0),
         employee_expenses: parseFloat(empExpResult.rows[0].total || 0),
         shop_expenses: parseFloat(shopExpResult.rows[0].total || 0)
@@ -1379,6 +1393,19 @@ app.get('/api/reports/monthly', requirePermission('reports'), async (req, res) =
     const nextMonth = targetMonth === 12 ? 1 : targetMonth + 1;
     const nextMonthYear = targetMonth === 12 ? targetYear + 1 : targetYear;
     const monthEnd = `${nextMonthYear}-${String(nextMonth).padStart(2, '0')}-01 00:00:00`;
+
+    // Last month date bounds for comparison
+    const lastMonth = targetMonth === 1 ? 12 : targetMonth - 1;
+    const lastMonthYear = targetMonth === 1 ? targetYear - 1 : targetYear;
+    const lastMonthStart = `${lastMonthYear}-${String(lastMonth).padStart(2, '0')}-01 00:00:00`;
+    const lastMonthEnd = monthStart;
+
+    // Last month sales revenue
+    const lastMonthSalesResult = await pool.query(`
+      SELECT SUM(total_amount) as revenue
+      FROM sales
+      WHERE sale_date >= $1 AND sale_date < $2
+    `, [lastMonthStart, lastMonthEnd]);
 
     // Daily Sales
     const salesRes = await pool.query(`
@@ -1436,6 +1463,7 @@ app.get('/api/reports/monthly', requirePermission('reports'), async (req, res) =
       summary: {
         sales: parseFloat(sumsRes.rows[0].total_sales),
         profit: parseFloat(sumsRes.rows[0].total_profit),
+        last_month_sales: parseFloat(lastMonthSalesResult.rows[0].revenue || 0),
         purchases: parseFloat(sumsRes.rows[0].total_purchases),
         employee_expenses: parseFloat(sumsRes.rows[0].total_emp_expenses),
         shop_expenses: parseFloat(sumsRes.rows[0].total_shop_expenses),
