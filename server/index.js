@@ -1679,7 +1679,7 @@ app.get('/api/cash/summary', requirePermission('cash'), async (req, res) => {
 app.get('/api/cash/transactions', requirePermission('cash'), async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM cash_transactions ORDER BY transaction_date DESC, id DESC LIMIT 300'
+      'SELECT * FROM cash_transactions ORDER BY transaction_date ASC, id ASC'
     );
     res.json(result.rows);
   } catch (err) {

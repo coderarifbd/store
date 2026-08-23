@@ -27,10 +27,11 @@ function CashLedger({ activeView, userRole }) {
   const [withdrawDesc, setWithdrawDesc] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Search & Filter states
+  // Search, Filter & Sort states
   const [filterType, setFilterType] = useState('all'); // 'all', 'inflow', 'outflow'
   const [filterSource, setFilterSource] = useState('all'); // 'all', 'sale', 'purchase', 'expense', 'capital'
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' = oldest first, 'desc' = newest first
 
   useEffect(() => {
     if (activeView === 'cash') {
@@ -138,8 +139,26 @@ function CashLedger({ activeView, userRole }) {
     }
   };
 
+  // Process transactions chronologically to compute running balance and Sl No
+  const processedTransactions = (() => {
+    let running = 0;
+    return transactions.map((t, index) => {
+      const amt = parseFloat(t.amount);
+      if (t.type === 'inflow') {
+        running += amt;
+      } else {
+        running -= amt;
+      }
+      return {
+        ...t,
+        sl: index + 1,
+        runningBalance: running
+      };
+    });
+  })();
+
   // Filter & Search Logic
-  const filteredTransactions = transactions.filter(t => {
+  const filteredTransactions = processedTransactions.filter(t => {
     const matchesType = filterType === 'all' || t.type === filterType;
     
     let matchesSource = true;
@@ -158,16 +177,7 @@ function CashLedger({ activeView, userRole }) {
     return matchesType && matchesSource && matchesSearch;
   });
 
-  const getSourceLabel = (src) => {
-    switch (src) {
-      case 'sale': return 'পণ্য বিক্রি (POS)';
-      case 'purchase': return 'পণ্য ক্রয় (Invoice)';
-      case 'expense': return 'খরচ হিসাব';
-      case 'capital_addition': return 'মূলধন যোগ';
-      case 'capital_withdrawal': return 'ক্যাশ উত্তোলন';
-      default: return src;
-    }
-  };
+  const displayList = sortOrder === 'asc' ? filteredTransactions : [...filteredTransactions].reverse();
 
   if (loading && !summary) {
     return <div style={{ padding: '2rem', textAlign: 'center' }}>লোড হচ্ছে...</div>;
@@ -324,6 +334,17 @@ function CashLedger({ activeView, userRole }) {
                 <option value="expense">ব্যয় ও পরিচালনা (Expenses)</option>
                 <option value="capital">মূলধন যোগ/উত্তোলন</option>
               </select>
+
+              {/* Sort Order */}
+              <select 
+                className="form-control" 
+                style={{ width: '150px' }}
+                value={sortOrder} 
+                onChange={(e) => setSortOrder(e.target.value)}
+              >
+                <option value="asc">পুরোনো প্রথম (Oldest First)</option>
+                <option value="desc">নতুন প্রথম (Newest First)</option>
+              </select>
             </div>
 
             {/* Search Input */}
@@ -345,51 +366,67 @@ function CashLedger({ activeView, userRole }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>তারিখ</th>
-                  <th>রেফারেন্স/আইডি</th>
-                  <th>বিবরণ</th>
-                  <th>উৎস</th>
-                  <th>লেনদেন ধরণ</th>
-                  <th style={{ textAlign: 'right' }}>পরিমাণ (৳)</th>
+                  <th style={{ width: '60px', textAlign: 'center' }}>NO</th>
+                  <th>তারিখ (DATE)</th>
+                  <th>বিবরণ (DESCRIPTION)</th>
+                  <th style={{ textAlign: 'right' }}>আয় (INCOME)</th>
+                  <th style={{ textAlign: 'right' }}>ব্যয় (EXPENSE)</th>
+                  <th style={{ textAlign: 'right' }}>মূলধন/জের (BALANCE)</th>
+                  <th style={{ textAlign: 'center' }}>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredTransactions.length === 0 ? (
+                {displayList.length === 0 ? (
                   <tr>
-                    <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
+                    <td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
                       কোনো লেনদেন রেকর্ড পাওয়া যায়নি।
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((t) => {
-                    const isCheckInflow = t.type === 'inflow';
+                  displayList.map((t) => {
+                    const isIncome = t.type === 'inflow';
+                    const isManual = t.source === 'capital_addition' || t.source === 'capital_withdrawal';
+                    const formattedDate = new Date(t.transaction_date).toLocaleDateString('en-GB'); // Format: DD/MM/YYYY
+                    
                     return (
-                      <tr key={t.id} className={isCheckInflow ? 'inflow-row' : 'outflow-row'}>
-                        <td>{new Date(t.transaction_date).toLocaleString('bn-BD', { dateStyle: 'medium', timeStyle: 'short' })}</td>
+                      <tr key={t.id}>
+                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>{t.sl}</td>
+                        <td>{formattedDate}</td>
                         <td>
-                          <code style={{ fontSize: '0.8rem', backgroundColor: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px', color: 'var(--text-primary)' }}>
-                            {t.reference_id || 'N/A'}
-                          </code>
+                          <div style={{ fontWeight: '500' }}>{t.description}</div>
+                          {t.reference_id && (
+                            <small style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'block', marginTop: '2px' }}>
+                              Ref ID: {t.reference_id}
+                            </small>
+                          )}
                         </td>
-                        <td><strong>{t.description}</strong></td>
-                        <td>
-                          <span style={{ fontSize: '0.85rem' }}>{getSourceLabel(t.source)}</span>
+                        <td style={{ textAlign: 'right', fontWeight: '600' }}>
+                          {isIncome ? (
+                            <span style={{ color: 'var(--success)' }}>
+                              ৳ {parseFloat(t.amount).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          )}
                         </td>
-                        <td>
-                          <span 
-                            className={`badge ${isCheckInflow ? 'success' : 'danger'}`}
-                            style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}
-                          >
-                            {isCheckInflow ? <PlusCircle size={10} /> : <MinusCircle size={10} />}
-                            {isCheckInflow ? 'জমা (Inflow)' : 'খরচ (Outflow)'}
-                          </span>
+                        <td style={{ textAlign: 'right', fontWeight: '600' }}>
+                          {!isIncome ? (
+                            <span style={{ color: 'var(--danger)' }}>
+                              ৳ {parseFloat(t.amount).toFixed(2)}
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>—</span>
+                          )}
                         </td>
                         <td style={{ 
                           textAlign: 'right', 
-                          fontWeight: '700', 
-                          color: isCheckInflow ? 'var(--success)' : 'var(--danger)' 
+                          fontWeight: '700',
+                          color: t.runningBalance >= 0 ? 'inherit' : 'var(--danger)'
                         }}>
-                          {isCheckInflow ? '+' : '-'}৳{parseFloat(t.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                          ৳ {parseFloat(t.runningBalance).toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: 'center', fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text-muted)' }}>
+                          {isManual ? 'Manual' : 'Auto-synced'}
                         </td>
                       </tr>
                     );
