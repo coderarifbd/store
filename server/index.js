@@ -55,7 +55,14 @@ const requirePermission = (moduleName) => {
         return next();
       }
       const allowed = req.user.allowed_modules || '';
-      if (allowed.split(',').includes(moduleName)) {
+      const allowedList = allowed.split(',');
+      
+      if (allowedList.includes(moduleName)) {
+        return next();
+      }
+      
+      // Allow GET requests if they have the read-only variant of the permission
+      if (req.method === 'GET' && allowedList.includes(`${moduleName}_read`)) {
         return next();
       }
     }
