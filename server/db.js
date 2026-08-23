@@ -143,6 +143,19 @@ const initDb = async () => {
       );
     `);
 
+    // 6.5. Cash transactions table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cash_transactions (
+        id SERIAL PRIMARY KEY,
+        type VARCHAR(20) NOT NULL,
+        source VARCHAR(50) NOT NULL,
+        amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        description TEXT,
+        transaction_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        reference_id VARCHAR(100)
+      );
+    `);
+
     // 7. Users table
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -172,7 +185,7 @@ const initDb = async () => {
       const passwordHash = await bcrypt.hash('admin123', salt);
       await client.query(
         'INSERT INTO users (username, password_hash, role, allowed_modules) VALUES ($1, $2, $3, $4)',
-        ['admin', passwordHash, 'admin', 'dashboard,inventory,purchases,sales,expenses,reports,users']
+        ['admin', passwordHash, 'admin', 'dashboard,inventory,purchases,sales,expenses,reports,users,cash']
       );
       console.log('Default admin user seeded successfully.');
     } else {
@@ -180,9 +193,41 @@ const initDb = async () => {
       await client.query(`
         UPDATE users 
         SET role = 'admin', 
-            allowed_modules = 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+            allowed_modules = 'dashboard,inventory,purchases,sales,expenses,reports,users,cash' 
         WHERE username = 'admin'
       `);
+    }
+
+    // Auto-populate cash transactions if empty
+    const cashCount = await client.query('SELECT COUNT(*) FROM cash_transactions');
+    if (parseInt(cashCount.rows[0].count) === 0) {
+      console.log('Migrating historical data to cash_transactions...');
+      // 1. Populate from Sales
+      await client.query(`
+        INSERT INTO cash_transactions (type, source, amount, description, transaction_date, reference_id)
+        SELECT 'inflow', 'sale', total_amount, 'পণ্য বিক্রি (Sale #' || id || ')', sale_date, CAST(id AS VARCHAR)
+        FROM sales;
+      `);
+      // 2. Populate from Purchases
+      await client.query(`
+        INSERT INTO cash_transactions (type, source, amount, description, transaction_date, reference_id)
+        SELECT 'outflow', 'purchase', SUM(quantity * purchase_price), 'পণ্য ক্রয় (Invoice #' || COALESCE(invoice_no, 'Legacy') || ')', MIN(purchase_date), COALESCE(invoice_no, 'Legacy')
+        FROM purchases
+        GROUP BY invoice_no;
+      `);
+      // 3. Populate from Employee Expenses
+      await client.query(`
+        INSERT INTO cash_transactions (type, source, amount, description, transaction_date, reference_id)
+        SELECT 'outflow', 'expense', amount, 'বেতন ও কর্মচারী ভাতা (' || employee_name || ' - ' || expense_type || ')', payment_date, CAST(id AS VARCHAR)
+        FROM employee_expenses;
+      `);
+      // 4. Populate from Shop Expenses
+      await client.query(`
+        INSERT INTO cash_transactions (type, source, amount, description, transaction_date, reference_id)
+        SELECT 'outflow', 'expense', amount, 'দোকান পরিচালনা খরচ (' || category || ')', expense_date, CAST(id AS VARCHAR)
+        FROM shop_expenses;
+      `);
+      console.log('Historical data migrated to cash_transactions successfully.');
     }
 
     console.log('Database tables initialized successfully.');

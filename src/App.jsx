@@ -8,6 +8,7 @@ import Expenses from './components/Expenses';
 import Reports from './components/Reports';
 import Login from './components/Login';
 import UsersManagement from './components/Users';
+import CashLedger from './components/CashLedger';
 
 // Intercept global fetch to inject JWT bearer tokens and handle auto-logout on session expiry (401)
 const originalFetch = window.fetch;
@@ -97,7 +98,7 @@ function App() {
 
   // Safeguard: Check if the user is allowed to see the currentView
   const allowed = user?.role === 'admin' 
-    ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+    ? 'dashboard,inventory,purchases,sales,expenses,reports,users,cash' 
     : (user?.allowed_modules || 'dashboard,inventory,purchases,sales');
 
   const isViewAllowed = currentView === 'inventory'
@@ -156,6 +157,9 @@ function App() {
         )}
         {currentView === 'expenses' && (
           <Expenses activeView={currentView} userRole={user?.role} />
+        )}
+        {currentView === 'cash' && (
+          <CashLedger activeView={currentView} userRole={user?.role} />
         )}
         {user?.role === 'admin' && currentView === 'reports' && (
           <Reports activeView={currentView} />

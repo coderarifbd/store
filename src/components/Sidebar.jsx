@@ -10,7 +10,8 @@ import {
   User,
   Users,
   MoreHorizontal,
-  Settings
+  Settings,
+  Wallet
 } from 'lucide-react';
 
 function Sidebar({ currentView, setCurrentView, username, userRole, userAllowedModules, onLogout, onChangePassword }) {
@@ -22,12 +23,13 @@ function Sidebar({ currentView, setCurrentView, username, userRole, userAllowedM
     { id: 'purchases', label: 'পণ্য ক্রয়', icon: ShoppingCart },
     { id: 'sales', label: 'পণ্য বিক্রি', icon: Receipt },
     { id: 'expenses', label: 'খরচ হিসাব', icon: BadgeDollarSign },
+    { id: 'cash', label: 'ক্যাশ হিসাব', icon: Wallet },
     { id: 'reports', label: 'রিপোর্ট', icon: BarChart3 },
     { id: 'users', label: 'ইউজার', icon: Users }
   ];
 
   const allowedString = userRole === 'admin' 
-    ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+    ? 'dashboard,inventory,purchases,sales,expenses,reports,users,cash' 
     : (userAllowedModules || 'dashboard,inventory,purchases,sales');
 
   const menuItems = ALL_MENU_ITEMS.filter(item => {

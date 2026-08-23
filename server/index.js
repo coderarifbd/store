@@ -665,6 +665,14 @@ app.post('/api/purchases', requirePermission('purchases'), async (req, res) => {
       results.push(purchaseResult.rows[0]);
     }
     
+    // Log cash transaction for purchases (total sum of invoice)
+    const totalInvoiceCost = results.reduce((sum, item) => sum + (parseInt(item.quantity) * parseFloat(item.purchase_price)), 0);
+    await client.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+       VALUES ('outflow', 'purchase', $1, $2, $3, $4)`,
+      [totalInvoiceCost, `পণ্য ক্রয় (Invoice #${invoiceNo})`, invoiceNo, pDate]
+    );
+    
     await client.query('COMMIT');
     res.status(201).json(results);
   } catch (err) {
@@ -715,6 +723,13 @@ app.delete('/api/purchases/invoice/:invoice_no', requireAdmin, async (req, res) 
     } else {
       await client.query('DELETE FROM purchases WHERE id = $1', [itemsCheck.rows[0].id]);
     }
+    
+    // Delete cash transaction
+    await client.query(
+      `DELETE FROM cash_transactions 
+       WHERE source = 'purchase' AND reference_id = $1`,
+      [invoice_no]
+    );
     
     await client.query('COMMIT');
     res.json({ message: 'Purchase invoice deleted successfully' });
@@ -1096,6 +1111,13 @@ app.post('/api/sales', requirePermission('sales'), async (req, res) => {
       );
     }
     
+    // Log cash transaction
+    await client.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+       VALUES ('inflow', 'sale', $1, $2, $3, $4)`,
+      [final_amount, `পণ্য বিক্রি (Sale #${saleId})`, String(saleId), sDate]
+    );
+    
     await client.query('COMMIT');
     res.status(201).json(saleInsert.rows[0]);
   } catch (err) {
@@ -1131,6 +1153,13 @@ app.delete('/api/sales/:id', requireAdmin, async (req, res) => {
     // 3. Delete sale items and sale record
     await client.query('DELETE FROM sale_items WHERE sale_id = $1', [id]);
     await client.query('DELETE FROM sales WHERE id = $1', [id]);
+    
+    // Delete cash transaction
+    await client.query(
+      `DELETE FROM cash_transactions 
+       WHERE source = 'sale' AND reference_id = $1`,
+      [id]
+    );
     
     await client.query('COMMIT');
     res.json({ message: 'Sale invoice deleted successfully and stock restored' });
@@ -1169,7 +1198,13 @@ app.post('/api/employee-expenses', requirePermission('expenses'), async (req, re
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
       [employee_name, expense_type, amount, month_year, pDate, notes || '']
     );
-    res.status(201).json(result.rows[0]);
+    const expObj = result.rows[0];
+    await pool.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+       VALUES ('outflow', 'expense', $1, $2, $3, $4)`,
+      [expObj.amount, `বেতন ও কর্মচারী ভাতা (${expObj.employee_name} - ${expObj.expense_type})`, String(expObj.id), expObj.payment_date]
+    );
+    res.status(201).json(expObj);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error saving employee expense' });
@@ -1184,6 +1219,11 @@ app.delete('/api/employee-expenses/:id', requireAdmin, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Expense not found' });
     }
+    await pool.query(
+      `DELETE FROM cash_transactions 
+       WHERE source = 'expense' AND reference_id = $1`,
+      [id]
+    );
     res.json({ message: 'Employee expense deleted successfully' });
   } catch (err) {
     console.error(err);
@@ -1217,7 +1257,13 @@ app.post('/api/shop-expenses', requirePermission('expenses'), async (req, res) =
        VALUES ($1, $2, $3, $4) RETURNING *`,
       [category, amount, eDate, notes || '']
     );
-    res.status(201).json(result.rows[0]);
+    const shopExpObj = result.rows[0];
+    await pool.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+       VALUES ('outflow', 'expense', $1, $2, $3, $4)`,
+      [shopExpObj.amount, `দোকান পরিচালনা খরচ (${shopExpObj.category})`, String(shopExpObj.id), shopExpObj.expense_date]
+    );
+    res.status(201).json(shopExpObj);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error saving shop expense' });
@@ -1232,6 +1278,11 @@ app.delete('/api/shop-expenses/:id', requireAdmin, async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Expense not found' });
     }
+    await pool.query(
+      `DELETE FROM cash_transactions 
+       WHERE source = 'expense' AND reference_id = $1`,
+      [id]
+    );
     res.json({ message: 'Shop expense deleted successfully' });
   } catch (err) {
     console.error(err);
@@ -1581,6 +1632,109 @@ app.get('/api/reports/stats', requirePermission('reports'), async (req, res) => 
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error generating statistics' });
+  }
+});
+
+// ==========================================
+// CASH LEDGER ENDPOINTS
+// ==========================================
+
+// Get cash summary and transaction logs
+app.get('/api/cash/summary', requirePermission('cash'), async (req, res) => {
+  try {
+    // 1. Current cash balance
+    const balanceRes = await pool.query(
+      `SELECT SUM(CASE WHEN type = 'inflow' THEN amount ELSE -amount END) as balance FROM cash_transactions`
+    );
+    const balance = parseFloat(balanceRes.rows[0].balance || 0);
+
+    // 2. Breakdown sums
+    const breakdownRes = await pool.query(`
+      SELECT 
+        COALESCE(SUM(CASE WHEN source = 'capital_addition' THEN amount END), 0) as total_capital,
+        COALESCE(SUM(CASE WHEN source = 'sale' THEN amount END), 0) as total_sales,
+        COALESCE(SUM(CASE WHEN source = 'purchase' THEN amount END), 0) as total_purchases,
+        COALESCE(SUM(CASE WHEN source = 'expense' THEN amount END), 0) as total_expenses,
+        COALESCE(SUM(CASE WHEN source = 'capital_withdrawal' THEN amount END), 0) as total_withdrawals
+      FROM cash_transactions
+    `);
+    
+    res.json({
+      balance,
+      breakdown: {
+        total_capital: parseFloat(breakdownRes.rows[0].total_capital),
+        total_sales: parseFloat(breakdownRes.rows[0].total_sales),
+        total_purchases: parseFloat(breakdownRes.rows[0].total_purchases),
+        total_expenses: parseFloat(breakdownRes.rows[0].total_expenses),
+        total_withdrawals: parseFloat(breakdownRes.rows[0].total_withdrawals)
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching cash summary' });
+  }
+});
+
+// Get transactions history
+app.get('/api/cash/transactions', requirePermission('cash'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM cash_transactions ORDER BY transaction_date DESC, id DESC LIMIT 300'
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching cash transactions' });
+  }
+});
+
+// Add capital
+app.post('/api/cash/capital', requirePermission('cash'), async (req, res) => {
+  const { amount, description, transaction_date } = req.body;
+  if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+    return res.status(400).json({ error: 'সঠিক মূলধনের পরিমাণ প্রদান করুন' });
+  }
+  try {
+    const tDate = transaction_date ? new Date(transaction_date) : new Date();
+    const result = await pool.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, transaction_date)
+       VALUES ('inflow', 'capital_addition', $1, $2, $3) RETURNING *`,
+      [parseFloat(amount), description || 'নতুন মূলধন যোগ', tDate]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error adding capital' });
+  }
+});
+
+// Withdraw capital or cash
+app.post('/api/cash/withdraw', requirePermission('cash'), async (req, res) => {
+  const { amount, description, transaction_date } = req.body;
+  if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+    return res.status(400).json({ error: 'সঠিক উত্তোলনের পরিমাণ প্রদান করুন' });
+  }
+  try {
+    // Check if enough cash is available
+    const balanceRes = await pool.query(
+      `SELECT SUM(CASE WHEN type = 'inflow' THEN amount ELSE -amount END) as balance FROM cash_transactions`
+    );
+    const balance = parseFloat(balanceRes.rows[0].balance || 0);
+    
+    if (balance < parseFloat(amount)) {
+      return res.status(400).json({ error: 'পর্যাপ্ত ক্যাশ ব্যালেন্স নেই' });
+    }
+
+    const tDate = transaction_date ? new Date(transaction_date) : new Date();
+    const result = await pool.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, transaction_date)
+       VALUES ('outflow', 'capital_withdrawal', $1, $2, $3) RETURNING *`,
+      [parseFloat(amount), description || 'ক্যাশ উত্তোলন', tDate]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error withdrawing cash' });
   }
 });
 

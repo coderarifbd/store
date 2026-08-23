@@ -7,6 +7,7 @@ const ALL_MODULES = [
   { id: 'purchases', label: 'পণ্য ক্রয় হিসাব (Purchases)' },
   { id: 'sales', label: 'পণ্য বিক্রি - POS (Sales)' },
   { id: 'expenses', label: 'খরচ হিসাব (Expenses)' },
+  { id: 'cash', label: 'ক্যাশ হিসাব (Cash Ledger)' },
   { id: 'reports', label: 'রিপোর্ট ও বিশ্লেষণ (Reports)' }
 ];
 
@@ -92,7 +93,7 @@ function UsersManagement() {
           password: password.trim(),
           role,
           allowed_modules: role === 'admin' 
-            ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+            ? 'dashboard,inventory,purchases,sales,expenses,reports,users,cash' 
             : selectedModules.join(',')
         })
       });
@@ -158,7 +159,7 @@ function UsersManagement() {
         body: JSON.stringify({
           role: editRole,
           allowed_modules: editRole === 'admin' 
-            ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
+            ? 'dashboard,inventory,purchases,sales,expenses,reports,users,cash' 
             : editSelectedModules.join(',')
         })
       });
