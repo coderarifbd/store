@@ -100,7 +100,9 @@ function App() {
     ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
     : (user?.allowed_modules || 'dashboard,inventory,purchases,sales');
 
-  const isViewAllowed = allowed.split(',').includes(currentView);
+  const isViewAllowed = currentView === 'inventory'
+    ? (allowed.split(',').includes('inventory') || allowed.split(',').includes('inventory_read'))
+    : allowed.split(',').includes(currentView);
   
   // If the current view is not allowed, revert to the first allowed view
   React.useEffect(() => {
