@@ -13,7 +13,8 @@ const CATEGORIES = [
   'অন্যান্য (Others)'
 ];
 
-function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTerm }) {
+function Inventory({ activeView, userRole, userAllowedModules, initialSearchTerm, setInitialSearchTerm }) {
+  const isReadOnly = userRole !== 'admin' && userAllowedModules && userAllowedModules.split(',').includes('inventory_read');
   const [products, setProducts] = useState([]);
   const [brands, setBrands] = useState([]);
   const [newBrandName, setNewBrandName] = useState('');
@@ -322,9 +323,11 @@ function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTe
     <div>
       <div className="content-header">
         <h1>ইনভেন্টরি স্টক</h1>
-        <button className="btn btn-primary" onClick={openAddModal}>
-          <Plus size={16} /> নতুন পণ্য যোগ করুন
-        </button>
+        {!isReadOnly && (
+          <button className="btn btn-primary" onClick={openAddModal}>
+            <Plus size={16} /> নতুন পণ্য যোগ করুন
+          </button>
+        )}
       </div>
 
       {error && (
@@ -436,9 +439,11 @@ function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTe
                       </td>
                       <td style={{ textAlign: 'center' }}>{product.reorder_level} টি</td>
                       <td style={{ textAlign: 'center' }}>
-                        <button className="btn-icon" onClick={() => openEditModal(product)} title="এডিট">
-                          <Edit2 size={16} />
-                        </button>
+                        {!isReadOnly && (
+                          <button className="btn-icon" onClick={() => openEditModal(product)} title="এডিট">
+                            <Edit2 size={16} />
+                          </button>
+                        )}
                         {userRole === 'admin' && (
                           <button className="btn-icon delete" onClick={() => handleDeleteProduct(product.id)} title="ডিলিট">
                             <Trash2 size={16} />
@@ -506,16 +511,18 @@ function Inventory({ activeView, userRole, initialSearchTerm, setInitialSearchTe
                       </div>
                     </div>
                   </div>
-                  <div className="card-actions">
-                    <button className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(product)}>
-                      <Edit2 size={12} /> এডিট
-                    </button>
-                    {userRole === 'admin' && (
-                      <button className="btn btn-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => handleDeleteProduct(product.id)}>
-                        <Trash2 size={12} /> মুছুন
+                  {!isReadOnly && (
+                    <div className="card-actions">
+                      <button className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => openEditModal(product)}>
+                        <Edit2 size={12} /> এডিট
                       </button>
-                    )}
-                  </div>
+                      {userRole === 'admin' && (
+                        <button className="btn btn-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} onClick={() => handleDeleteProduct(product.id)}>
+                          <Trash2 size={12} /> মুছুন
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })

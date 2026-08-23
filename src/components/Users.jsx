@@ -52,13 +52,22 @@ function UsersManagement() {
   };
 
   const handleModuleToggle = (moduleId) => {
-    setSelectedModules(prev => {
-      if (prev.includes(moduleId)) {
-        return prev.filter(m => m !== moduleId);
+    if (moduleId === 'inventory') {
+      const isSel = selectedModules.includes('inventory') || selectedModules.includes('inventory_read');
+      if (isSel) {
+        setSelectedModules(prev => prev.filter(m => m !== 'inventory' && m !== 'inventory_read'));
       } else {
-        return [...prev, moduleId];
+        setSelectedModules(prev => [...prev, 'inventory']); // Default to full access
       }
-    });
+    } else {
+      setSelectedModules(prev => {
+        if (prev.includes(moduleId)) {
+          return prev.filter(m => m !== moduleId);
+        } else {
+          return [...prev, moduleId];
+        }
+      });
+    }
   };
 
   const handleAddUser = async (e) => {
@@ -107,13 +116,22 @@ function UsersManagement() {
   };
 
   const handleEditModuleToggle = (moduleId) => {
-    setEditSelectedModules(prev => {
-      if (prev.includes(moduleId)) {
-        return prev.filter(m => m !== moduleId);
+    if (moduleId === 'inventory') {
+      const isSel = editSelectedModules.includes('inventory') || editSelectedModules.includes('inventory_read');
+      if (isSel) {
+        setEditSelectedModules(prev => prev.filter(m => m !== 'inventory' && m !== 'inventory_read'));
       } else {
-        return [...prev, moduleId];
+        setEditSelectedModules(prev => [...prev, 'inventory']); // Default to full access
       }
-    });
+    } else {
+      setEditSelectedModules(prev => {
+        if (prev.includes(moduleId)) {
+          return prev.filter(m => m !== moduleId);
+        } else {
+          return [...prev, moduleId];
+        }
+      });
+    }
   };
 
   const openEditModal = (user) => {
@@ -192,6 +210,12 @@ function UsersManagement() {
     }
   };
 
+  const isInventorySelected = selectedModules.includes('inventory') || selectedModules.includes('inventory_read');
+  const isInventoryFull = selectedModules.includes('inventory');
+
+  const isEditInventorySelected = editSelectedModules.includes('inventory') || editSelectedModules.includes('inventory_read');
+  const isEditInventoryFull = editSelectedModules.includes('inventory');
+
   return (
     <div>
       <div className="content-header">
@@ -243,6 +267,8 @@ function UsersManagement() {
                             মডিউল: {
                               u.allowed_modules.split(',')
                                 .map(mKey => {
+                                  if (mKey === 'inventory') return 'ইনভেন্টরি (ফুল)';
+                                  if (mKey === 'inventory_read') return 'ইনভেন্টরি (রিড)';
                                   const match = ALL_MODULES.find(m => m.id === mKey);
                                   return match ? match.label.split(' ')[0] : mKey;
                                 })
@@ -346,25 +372,64 @@ function UsersManagement() {
                   borderRadius: 'var(--radius-md)',
                   backgroundColor: 'var(--bg-primary)'
                 }}>
-                  {ALL_MODULES.map(m => (
-                    <label key={m.id} style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.5rem', 
-                      margin: 0,
-                      cursor: 'pointer',
-                      fontSize: '0.9rem',
-                      color: 'var(--text-primary)'
-                    }}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedModules.includes(m.id)}
-                        onChange={() => handleModuleToggle(m.id)}
-                        style={{ width: 'auto', cursor: 'pointer' }}
-                      />
-                      {m.label}
-                    </label>
-                  ))}
+                  {ALL_MODULES.map(m => {
+                    const isChecked = m.id === 'inventory' ? isInventorySelected : selectedModules.includes(m.id);
+                    return (
+                      <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        <label style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '0.5rem', 
+                          margin: 0,
+                          cursor: 'pointer',
+                          fontSize: '0.9rem',
+                          color: 'var(--text-primary)'
+                        }}>
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked}
+                            onChange={() => handleModuleToggle(m.id)}
+                            style={{ width: 'auto', cursor: 'pointer' }}
+                          />
+                          {m.label}
+                        </label>
+                        {m.id === 'inventory' && isInventorySelected && (
+                          <div style={{ marginLeft: '1.5rem', marginTop: '0.1rem', marginBottom: '0.35rem', display: 'flex', gap: '1rem', fontSize: '0.85rem' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', margin: 0, color: 'var(--text-secondary)' }}>
+                              <input 
+                                type="radio" 
+                                name="inventory_access_create"
+                                checked={isInventoryFull} 
+                                onChange={() => {
+                                  setSelectedModules(prev => {
+                                    const cleaned = prev.filter(x => x !== 'inventory' && x !== 'inventory_read');
+                                    return [...cleaned, 'inventory'];
+                                  });
+                                }}
+                                style={{ width: 'auto', margin: 0 }}
+                              />
+                              ফুল এক্সেস (Full)
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', margin: 0, color: 'var(--text-secondary)' }}>
+                              <input 
+                                type="radio" 
+                                name="inventory_access_create"
+                                checked={!isInventoryFull} 
+                                onChange={() => {
+                                  setSelectedModules(prev => {
+                                    const cleaned = prev.filter(x => x !== 'inventory' && x !== 'inventory_read');
+                                    return [...cleaned, 'inventory_read'];
+                                  });
+                                }}
+                                style={{ width: 'auto', margin: 0 }}
+                              />
+                              শুধু রিড-অনলি (Read)
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -423,25 +488,64 @@ function UsersManagement() {
                 <div className="form-group">
                   <label style={{ marginBottom: '0.75rem' }}>মডিউল এক্সেস নির্ধারণ করুন *</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.65rem', backgroundColor: 'var(--bg-primary)', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
-                    {ALL_MODULES.map(m => (
-                      <label key={m.id} style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.5rem', 
-                        margin: 0,
-                        cursor: 'pointer',
-                        fontSize: '0.9rem',
-                        color: 'var(--text-primary)'
-                      }}>
-                        <input 
-                          type="checkbox" 
-                          checked={editSelectedModules.includes(m.id)}
-                          onChange={() => handleEditModuleToggle(m.id)}
-                          style={{ width: 'auto', cursor: 'pointer' }}
-                        />
-                        {m.label}
-                      </label>
-                    ))}
+                    {ALL_MODULES.map(m => {
+                      const isChecked = m.id === 'inventory' ? isEditInventorySelected : editSelectedModules.includes(m.id);
+                      return (
+                        <div key={m.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                          <label style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '0.5rem', 
+                            margin: 0,
+                            cursor: 'pointer',
+                            fontSize: '0.9rem',
+                            color: 'var(--text-primary)'
+                          }}>
+                            <input 
+                              type="checkbox" 
+                              checked={isChecked}
+                              onChange={() => handleEditModuleToggle(m.id)}
+                              style={{ width: 'auto', cursor: 'pointer' }}
+                            />
+                            {m.label}
+                          </label>
+                          {m.id === 'inventory' && isEditInventorySelected && (
+                            <div style={{ marginLeft: '1.5rem', marginTop: '0.1rem', marginBottom: '0.35rem', display: 'flex', gap: '1rem', fontSize: '0.85rem' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', margin: 0, color: 'var(--text-secondary)' }}>
+                                <input 
+                                  type="radio" 
+                                  name="inventory_access_edit"
+                                  checked={isEditInventoryFull} 
+                                  onChange={() => {
+                                    setEditSelectedModules(prev => {
+                                      const cleaned = prev.filter(x => x !== 'inventory' && x !== 'inventory_read');
+                                      return [...cleaned, 'inventory'];
+                                    });
+                                  }}
+                                  style={{ width: 'auto', margin: 0 }}
+                                />
+                                ফুল এক্সেস (Full)
+                              </label>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', margin: 0, color: 'var(--text-secondary)' }}>
+                                <input 
+                                  type="radio" 
+                                  name="inventory_access_edit"
+                                  checked={!isEditInventoryFull} 
+                                  onChange={() => {
+                                    setEditSelectedModules(prev => {
+                                      const cleaned = prev.filter(x => x !== 'inventory' && x !== 'inventory_read');
+                                      return [...cleaned, 'inventory_read'];
+                                    });
+                                  }}
+                                  style={{ width: 'auto', margin: 0 }}
+                                />
+                                শুধু রিড-অনলি (Read)
+                              </label>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

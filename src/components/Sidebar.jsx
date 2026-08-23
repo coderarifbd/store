@@ -30,7 +30,12 @@ function Sidebar({ currentView, setCurrentView, username, userRole, userAllowedM
     ? 'dashboard,inventory,purchases,sales,expenses,reports,users' 
     : (userAllowedModules || 'dashboard,inventory,purchases,sales');
 
-  const menuItems = ALL_MENU_ITEMS.filter(item => allowedString.split(',').includes(item.id));
+  const menuItems = ALL_MENU_ITEMS.filter(item => {
+    if (item.id === 'inventory') {
+      return allowedString.split(',').includes('inventory') || allowedString.split(',').includes('inventory_read');
+    }
+    return allowedString.split(',').includes(item.id);
+  });
 
   // Determine bottom bar items and drawer items for mobile
   // Always set hasMore to true so the "More" (আরও) button is always present,

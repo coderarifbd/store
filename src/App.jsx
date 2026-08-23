@@ -141,6 +141,7 @@ function App() {
           <Inventory 
             activeView={currentView} 
             userRole={user?.role} 
+            userAllowedModules={user?.allowed_modules}
             initialSearchTerm={inventorySearchTerm} 
             setInitialSearchTerm={setInventorySearchTerm} 
           />
