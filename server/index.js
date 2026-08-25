@@ -630,13 +630,22 @@ app.post('/api/purchases', requirePermission('purchases'), async (req, res) => {
           [pId, qty, price, vendor_name || '', pDate, invoiceNo]
         );
         
-        // Update product stock and update standard purchase_price
-        await client.query(
-          `UPDATE products 
-           SET stock_quantity = stock_quantity + $1, purchase_price = $2 
-           WHERE id = $3`,
-          [qty, price, pId]
-        );
+        // Update product stock and update standard purchase_price & selling_price (if provided)
+        if (item.selling_price !== undefined && item.selling_price !== null && !isNaN(item.selling_price) && parseFloat(item.selling_price) > 0) {
+          await client.query(
+            `UPDATE products 
+             SET stock_quantity = stock_quantity + $1, purchase_price = $2, selling_price = $3 
+             WHERE id = $4`,
+            [qty, price, parseFloat(item.selling_price), pId]
+          );
+        } else {
+          await client.query(
+            `UPDATE products 
+             SET stock_quantity = stock_quantity + $1, purchase_price = $2 
+             WHERE id = $3`,
+            [qty, price, pId]
+          );
+        }
         
         results.push(purchaseResult.rows[0]);
       }
@@ -654,13 +663,23 @@ app.post('/api/purchases', requirePermission('purchases'), async (req, res) => {
         [product_id, quantity, purchase_price, vendor_name || '', pDate, invoiceNo]
       );
       
-      // Update product stock and update standard purchase_price
-      await client.query(
-        `UPDATE products 
-         SET stock_quantity = stock_quantity + $1, purchase_price = $2 
-         WHERE id = $3`,
-        [quantity, purchase_price, product_id]
-      );
+      // Update product stock and update standard purchase_price & selling_price (if provided)
+      const reqSellingPrice = req.body.selling_price;
+      if (reqSellingPrice !== undefined && reqSellingPrice !== null && !isNaN(reqSellingPrice) && parseFloat(reqSellingPrice) > 0) {
+        await client.query(
+          `UPDATE products 
+           SET stock_quantity = stock_quantity + $1, purchase_price = $2, selling_price = $3 
+           WHERE id = $4`,
+          [quantity, purchase_price, parseFloat(reqSellingPrice), product_id]
+        );
+      } else {
+        await client.query(
+          `UPDATE products 
+           SET stock_quantity = stock_quantity + $1, purchase_price = $2 
+           WHERE id = $3`,
+          [quantity, purchase_price, product_id]
+        );
+      }
       
       results.push(purchaseResult.rows[0]);
     }

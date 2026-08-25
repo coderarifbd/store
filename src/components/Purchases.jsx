@@ -24,6 +24,7 @@ function Purchases({ activeView, userRole }) {
     product_id: '',
     quantity: '',
     purchase_price: '',
+    selling_price: '',
     vendor_name: '',
     purchase_date: new Date().toISOString().substring(0, 10)
   });
@@ -78,7 +79,9 @@ function Purchases({ activeView, userRole }) {
       if (prodData.length > 0) {
         setFormData(prev => ({
           ...prev,
-          product_id: prodData[0].id.toString()
+          product_id: prodData[0].id.toString(),
+          purchase_price: prodData[0].purchase_price.toString(),
+          selling_price: prodData[0].selling_price ? prodData[0].selling_price.toString() : ''
         }));
       }
     } catch (err) {
@@ -96,14 +99,15 @@ function Purchases({ activeView, userRole }) {
       [name]: value
     }));
 
-    // Auto fill default purchase price if product is selected
+    // Auto fill default purchase price and selling price if product is selected
     if (name === 'product_id') {
       const selectedProd = products.find(p => p.id.toString() === value);
       if (selectedProd) {
         setFormData(prev => ({
           ...prev,
           product_id: value,
-          purchase_price: selectedProd.purchase_price.toString()
+          purchase_price: selectedProd.purchase_price.toString(),
+          selling_price: selectedProd.selling_price ? selectedProd.selling_price.toString() : ''
         }));
       }
     }
@@ -119,6 +123,7 @@ function Purchases({ activeView, userRole }) {
       product_id: defaultProduct.id.toString(),
       quantity: '',
       purchase_price: defaultProduct.purchase_price.toString(),
+      selling_price: defaultProduct.selling_price ? defaultProduct.selling_price.toString() : '',
       vendor_name: '',
       purchase_date: new Date().toISOString().substring(0, 10)
     });
@@ -131,6 +136,7 @@ function Purchases({ activeView, userRole }) {
   const addToPurchaseCart = () => {
     const qty = parseInt(formData.quantity);
     const price = parseFloat(formData.purchase_price);
+    const sellPrice = formData.selling_price !== '' ? parseFloat(formData.selling_price) : undefined;
     
     if (isNaN(qty) || qty <= 0) {
       alert('দয়া করে সঠিক পরিমাণ লিখুন।');
@@ -149,6 +155,7 @@ function Purchases({ activeView, userRole }) {
       const updatedCart = [...purchaseCart];
       updatedCart[existingIndex].quantity += qty;
       updatedCart[existingIndex].purchase_price = price;
+      if (sellPrice !== undefined) updatedCart[existingIndex].selling_price = sellPrice;
       setPurchaseCart(updatedCart);
     } else {
       setPurchaseCart([...purchaseCart, {
@@ -157,7 +164,8 @@ function Purchases({ activeView, userRole }) {
         brand: selectedProd.brand,
         model: selectedProd.model,
         quantity: qty,
-        purchase_price: price
+        purchase_price: price,
+        selling_price: sellPrice !== undefined ? sellPrice : parseFloat(selectedProd.selling_price || 0)
       }]);
     }
 
@@ -190,7 +198,8 @@ function Purchases({ activeView, userRole }) {
           items: purchaseCart.map(item => ({
             product_id: item.product_id,
             quantity: item.quantity,
-            purchase_price: item.purchase_price
+            purchase_price: item.purchase_price,
+            selling_price: item.selling_price
           }))
         })
       });
@@ -923,7 +932,8 @@ function Purchases({ activeView, userRole }) {
                                 setFormData(prev => ({
                                   ...prev,
                                   product_id: p.id.toString(),
-                                  purchase_price: p.purchase_price.toString()
+                                  purchase_price: p.purchase_price.toString(),
+                                  selling_price: p.selling_price ? p.selling_price.toString() : ''
                                 }));
                                 setProductSearchTerm('');
                                 setShowProductDropdown(false);
@@ -939,9 +949,9 @@ function Purchases({ activeView, userRole }) {
                 </div>
               </div>
 
-              <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+              <div className="form-group" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '1rem' }}>
                 <div>
-                  <label>ক্রয়ের পরিমাণ</label>
+                  <label>ক্রয়ের পরিমাণ *</label>
                   <input
                     type="number"
                     name="quantity"
@@ -953,7 +963,7 @@ function Purchases({ activeView, userRole }) {
                   />
                 </div>
                 <div>
-                  <label>একক ক্রয়মূল্য (৳)</label>
+                  <label>একক ক্রয়মূল্য (৳) *</label>
                   <input
                     type="number"
                     step="0.01"
@@ -962,6 +972,19 @@ function Purchases({ activeView, userRole }) {
                     min="0"
                     placeholder="0.00"
                     value={formData.purchase_price}
+                    onChange={handleInputChange}
+                  />
+                </div>
+                <div>
+                  <label>একক বিক্রয়মূল্য (৳)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="selling_price"
+                    className="form-control"
+                    min="0"
+                    placeholder="0.00"
+                    value={formData.selling_price}
                     onChange={handleInputChange}
                   />
                 </div>
@@ -986,7 +1009,7 @@ function Purchases({ activeView, userRole }) {
                         <div>
                           <strong>{item.name}</strong> {item.brand ? `[${item.brand}]` : ''}
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-                            {item.quantity} টি × ৳{parseFloat(item.purchase_price).toFixed(2)}
+                            {item.quantity} টি × ক্রয়: ৳{parseFloat(item.purchase_price).toFixed(2)} {item.selling_price ? `| বিক্রয়: ৳${parseFloat(item.selling_price).toFixed(2)}` : ''}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
