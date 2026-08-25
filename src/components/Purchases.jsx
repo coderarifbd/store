@@ -446,12 +446,22 @@ function Purchases({ activeView, userRole }) {
 
   // Filter purchase logs
   const filteredPurchases = purchases.filter(p => {
-    const term = searchTerm.toLowerCase();
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return true;
+    const cleanTerm = term.replace(/^#/, '');
+
+    const invNo = (p.invoice_no || `PR-${p.id}`).toLowerCase();
+    const cleanInvNo = invNo.replace(/^#/, '');
+
     const matchesSearch = 
+      invNo.includes(term) ||
+      cleanInvNo.includes(cleanTerm) ||
       (p.product_name && p.product_name.toLowerCase().includes(term)) ||
       (p.product_brand && p.product_brand.toLowerCase().includes(term)) ||
+      (p.product_model && p.product_model.toLowerCase().includes(term)) ||
       (p.vendor_name && p.vendor_name.toLowerCase().includes(term)) ||
-      (p.product_category && p.product_category.toLowerCase().includes(term));
+      (p.product_category && p.product_category.toLowerCase().includes(term)) ||
+      p.id.toString().includes(cleanTerm);
     return matchesSearch;
   });
 
