@@ -1212,6 +1212,222 @@ app.post('/api/sales', requirePermission('sales'), async (req, res) => {
 });
 
 
+// Edit a sale invoice (update customer details, discount, date, and items)
+app.put('/api/sales/:id', requirePermission('sales'), async (req, res) => {
+  const { id } = req.params;
+  const { customer_name, customer_phone, discount, sale_date, items } = req.body;
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // 1. Verify sale exists
+    const saleCheck = await client.query('SELECT * FROM sales WHERE id = $1', [id]);
+    if (saleCheck.rows.length === 0) {
+      throw new Error('Sale record not found');
+    }
+    const oldSale = saleCheck.rows[0];
+    const sDate = sale_date ? new Date(sale_date) : oldSale.sale_date;
+    const disc = parseFloat(discount !== undefined ? discount : oldSale.discount) || 0;
+    
+    let final_amount = 0;
+    let profit = 0;
+    
+    if (items && Array.isArray(items)) {
+      if (items.length === 0) {
+        throw new Error('Sale must contain at least one item');
+      }
+      
+      // 2. Restore previous stock from old sale items
+      const oldItemsRes = await client.query('SELECT * FROM sale_items WHERE sale_id = $1', [id]);
+      for (const oldItem of oldItemsRes.rows) {
+        await client.query(
+          `UPDATE products 
+           SET stock_quantity = stock_quantity + $1 
+           WHERE id = $2`,
+          [oldItem.quantity, oldItem.product_id]
+        );
+      }
+      
+      // Delete old sale items
+      await client.query('DELETE FROM sale_items WHERE sale_id = $1', [id]);
+      
+      // 3. Process new items and validate stock
+      let total_amount = 0;
+      let total_cost = 0;
+      const processedItems = [];
+      
+      for (const item of items) {
+        const { product_id, quantity, selling_price, purchase_id } = item;
+        const pQty = parseInt(quantity);
+        const sPrice = parseFloat(selling_price);
+        
+        if (isNaN(pQty) || pQty <= 0) {
+          throw new Error('Invalid item quantity');
+        }
+        if (isNaN(sPrice) || sPrice < 0) {
+          throw new Error('Invalid selling price');
+        }
+        
+        const prodRes = await client.query('SELECT * FROM products WHERE id = $1', [product_id]);
+        if (prodRes.rows.length === 0) {
+          throw new Error(`Product ID ${product_id} not found`);
+        }
+        const product = prodRes.rows[0];
+        
+        if (product.stock_quantity < pQty) {
+          throw new Error(`Insufficient stock for product "${product.name}". Available: ${product.stock_quantity}, Requested: ${pQty}`);
+        }
+        
+        const allocations = [];
+        let itemTotalCost = 0;
+        
+        if (purchase_id) {
+          const pRes = await client.query('SELECT * FROM purchases WHERE id = $1', [purchase_id]);
+          if (pRes.rows.length === 0) {
+            throw new Error(`Selected batch (Purchase ID ${purchase_id}) not found`);
+          }
+          const purchase = pRes.rows[0];
+          
+          itemTotalCost = pQty * parseFloat(purchase.purchase_price);
+          allocations.push({
+            purchase_id,
+            quantity: pQty,
+            purchase_price: parseFloat(purchase.purchase_price)
+          });
+        } else {
+          // Automated FIFO calculation
+          const purchasesRes = await client.query(
+            'SELECT id, quantity, purchase_price FROM purchases WHERE product_id = $1 ORDER BY purchase_date ASC, id ASC',
+            [product_id]
+          );
+          
+          let remainingToSell = pQty;
+          for (const p of purchasesRes.rows) {
+            const consumedRes = await client.query(
+              'SELECT COALESCE(SUM(quantity), 0) as consumed FROM sale_items WHERE purchase_id = $1',
+              [p.id]
+            );
+            const consumed = parseInt(consumedRes.rows[0].consumed);
+            const availableInBatch = p.quantity - consumed;
+            
+            if (availableInBatch > 0) {
+              const consumeQty = Math.min(remainingToSell, availableInBatch);
+              itemTotalCost += consumeQty * parseFloat(p.purchase_price);
+              remainingToSell -= consumeQty;
+              
+              allocations.push({
+                purchase_id: p.id,
+                quantity: consumeQty,
+                purchase_price: parseFloat(p.purchase_price)
+              });
+              
+              if (remainingToSell <= 0) break;
+            }
+          }
+          
+          if (remainingToSell > 0) {
+            itemTotalCost += remainingToSell * parseFloat(product.purchase_price);
+            allocations.push({
+              purchase_id: null,
+              quantity: remainingToSell,
+              purchase_price: parseFloat(product.purchase_price)
+            });
+          }
+        }
+        
+        total_amount += sPrice * pQty;
+        total_cost += itemTotalCost;
+        
+        for (const alloc of allocations) {
+          processedItems.push({
+            product_id,
+            quantity: alloc.quantity,
+            purchase_price: alloc.purchase_price,
+            selling_price: sPrice,
+            purchase_id: alloc.purchase_id
+          });
+        }
+      }
+      
+      final_amount = total_amount - disc;
+      profit = final_amount - total_cost;
+      
+      // Insert new sale items
+      for (const pItem of processedItems) {
+        await client.query(
+          `INSERT INTO sale_items (sale_id, product_id, quantity, purchase_price, selling_price, purchase_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, pItem.product_id, pItem.quantity, pItem.purchase_price, pItem.selling_price, pItem.purchase_id]
+        );
+      }
+      
+      // Deduct stock from products table
+      const productDeductions = {};
+      for (const pItem of processedItems) {
+        productDeductions[pItem.product_id] = (productDeductions[pItem.product_id] || 0) + pItem.quantity;
+      }
+      for (const pId in productDeductions) {
+        await client.query(
+          `UPDATE products 
+           SET stock_quantity = stock_quantity - $1 
+           WHERE id = $2`,
+          [productDeductions[pId], parseInt(pId)]
+        );
+      }
+    } else {
+      // Only metadata/discount/date edit
+      const currentItems = await client.query(
+        'SELECT SUM(quantity * selling_price) as subtotal, SUM(quantity * purchase_price) as cost FROM sale_items WHERE sale_id = $1',
+        [id]
+      );
+      const subtotal = parseFloat(currentItems.rows[0]?.subtotal || 0);
+      const cost = parseFloat(currentItems.rows[0]?.cost || 0);
+      
+      final_amount = subtotal - disc;
+      profit = final_amount - cost;
+    }
+    
+    // 4. Update sales table
+    const updateResult = await client.query(
+      `UPDATE sales 
+       SET customer_name = $1, customer_phone = $2, discount = $3, total_amount = $4, profit = $5, sale_date = $6 
+       WHERE id = $7 RETURNING *`,
+      [customer_name !== undefined ? customer_name : oldSale.customer_name, customer_phone !== undefined ? customer_phone : oldSale.customer_phone, disc, final_amount, profit, sDate, id]
+    );
+    
+    // 5. Update cash transactions
+    const cashCheck = await client.query(
+      `SELECT * FROM cash_transactions WHERE source = 'sale' AND reference_id = $1`,
+      [String(id)]
+    );
+    if (cashCheck.rows.length > 0) {
+      await client.query(
+        `UPDATE cash_transactions 
+         SET amount = $1, transaction_date = $2 
+         WHERE source = 'sale' AND reference_id = $3`,
+        [final_amount, sDate, String(id)]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+         VALUES ('inflow', 'sale', $1, $2, $3, $4)`,
+        [final_amount, `পণ্য বিক্রি (Sale #${id})`, String(id), sDate]
+      );
+    }
+    
+    await client.query('COMMIT');
+    res.json(updateResult.rows[0]);
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(400).json({ error: err.message || 'Server error updating sale' });
+  } finally {
+    client.release();
+  }
+});
+
+
 // Delete a sale log and restore stock
 app.delete('/api/sales/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, AlertTriangle, X } from 'lucide-react';
+import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, Edit2, AlertTriangle, X } from 'lucide-react';
 
 function Sales({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('pos'); // 'pos' or 'history'
@@ -18,6 +18,20 @@ function Sales({ activeView, userRole }) {
   // Invoice Detail Modal State
   const [selectedSaleDetails, setSelectedSaleDetails] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
+
+  // Edit Sale Modal State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editSaleId, setEditSaleId] = useState(null);
+  const [editCustomerName, setEditCustomerName] = useState('');
+  const [editCustomerPhone, setEditCustomerPhone] = useState('');
+  const [editDiscount, setEditDiscount] = useState(0);
+  const [editSaleDate, setEditSaleDate] = useState('');
+  const [editItems, setEditItems] = useState([]);
+  const [allProductsList, setAllProductsList] = useState([]);
+  const [newItemProductId, setNewItemProductId] = useState('');
+  const [newItemQty, setNewItemQty] = useState(1);
+  const [newItemPrice, setNewItemPrice] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
 
   // Stock Batches Modal State
   const [showBatchesModal, setShowBatchesModal] = useState(false);
@@ -209,6 +223,149 @@ function Sales({ activeView, userRole }) {
       }
     });
     setShowConfirmModal(true);
+  };
+
+  const openEditSaleModal = async (id) => {
+    try {
+      const [saleRes, prodRes] = await Promise.all([
+        fetch(`/api/sales/${id}`),
+        fetch('/api/products')
+      ]);
+
+      if (!saleRes.ok) throw new Error('Failed to load sale details');
+      const data = await saleRes.json();
+      
+      let prods = [];
+      if (prodRes.ok) {
+        prods = await prodRes.json();
+        setAllProductsList(prods);
+      }
+
+      setEditSaleId(data.sale.id);
+      setEditCustomerName(data.sale.customer_name || '');
+      setEditCustomerPhone(data.sale.customer_phone || '');
+      setEditDiscount(parseFloat(data.sale.discount || 0));
+      
+      // format sale date for datetime-local: YYYY-MM-DDTHH:mm
+      if (data.sale.sale_date) {
+        const d = new Date(data.sale.sale_date);
+        const pad = (n) => String(n).padStart(2, '0');
+        const formatted = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        setEditSaleDate(formatted);
+      } else {
+        setEditSaleDate('');
+      }
+
+      setEditItems(data.items.map(it => ({
+        product_id: it.product_id,
+        name: it.product_name || 'পণ্য',
+        brand: it.product_brand || '',
+        model: it.product_model || '',
+        quantity: parseInt(it.quantity),
+        selling_price: parseFloat(it.selling_price),
+        purchase_price: parseFloat(it.purchase_price || 0),
+        purchase_id: it.purchase_id
+      })));
+
+      if (prods.length > 0) {
+        setNewItemProductId(prods[0].id.toString());
+        setNewItemPrice(prods[0].selling_price ? prods[0].selling_price.toString() : '');
+        setNewItemQty(1);
+      }
+
+      setShowEditModal(true);
+    } catch (err) {
+      alert(err.message || 'ইনভয়েস লোড করতে সমস্যা হয়েছে');
+    }
+  };
+
+  const handleUpdateEditItemQty = (index, newQty) => {
+    const qty = parseInt(newQty);
+    if (isNaN(qty) || qty <= 0) return;
+    setEditItems(prev => prev.map((item, i) => i === index ? { ...item, quantity: qty } : item));
+  };
+
+  const handleUpdateEditItemPrice = (index, newPrice) => {
+    const price = parseFloat(newPrice);
+    if (isNaN(price) || price < 0) return;
+    setEditItems(prev => prev.map((item, i) => i === index ? { ...item, selling_price: price } : item));
+  };
+
+  const handleRemoveEditItem = (index) => {
+    if (editItems.length <= 1) {
+      alert('বিক্রয় চালানে কমপক্ষে একটি পণ্য থাকতে হবে!');
+      return;
+    }
+    setEditItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddNewItemToEdit = () => {
+    const prod = allProductsList.find(p => p.id.toString() === newItemProductId);
+    if (!prod) return;
+    const qty = parseInt(newItemQty);
+    const price = parseFloat(newItemPrice);
+    if (isNaN(qty) || qty <= 0) {
+      alert('সঠিক পরিমাণ লিখুন');
+      return;
+    }
+    if (isNaN(price) || price < 0) {
+      alert('সঠিক বিক্রয়মূল্য লিখুন');
+      return;
+    }
+
+    setEditItems(prev => [...prev, {
+      product_id: prod.id,
+      name: prod.name,
+      brand: prod.brand || '',
+      model: prod.model || '',
+      quantity: qty,
+      selling_price: price,
+      purchase_price: parseFloat(prod.purchase_price || 0),
+      purchase_id: null
+    }]);
+
+    setNewItemQty(1);
+  };
+
+  const handleSaveSaleEdit = async (e) => {
+    e.preventDefault();
+    if (editItems.length === 0) {
+      alert('বিক্রয় চালানে কমপক্ষে একটি পণ্য থাকতে হবে!');
+      return;
+    }
+
+    try {
+      setEditSubmitting(true);
+      const res = await fetch(`/api/sales/${editSaleId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer_name: editCustomerName.trim(),
+          customer_phone: editCustomerPhone.trim(),
+          discount: parseFloat(editDiscount || 0),
+          sale_date: editSaleDate ? new Date(editSaleDate).toISOString() : undefined,
+          items: editItems.map(it => ({
+            product_id: it.product_id,
+            quantity: it.quantity,
+            selling_price: it.selling_price,
+            purchase_id: it.purchase_id
+          }))
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'বিক্রয় চালান আপডেট করতে সমস্যা হয়েছে');
+      }
+
+      alert('বিক্রয় চালান সফলভাবে সংশোধন করা হয়েছে!');
+      setShowEditModal(false);
+      fetchData();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setEditSubmitting(false);
+    }
   };
 
   const viewProductBatches = async (product) => {
@@ -697,6 +854,14 @@ function Sales({ activeView, userRole }) {
                               >
                                 <Eye size={16} />
                               </button>
+                              <button 
+                                className="btn-icon" 
+                                style={{ padding: '0.25rem', color: 'var(--accent-color)' }} 
+                                onClick={() => openEditSaleModal(sale.id)}
+                                title="ইনভয়েস সংশোধন"
+                              >
+                                <Edit2 size={16} />
+                              </button>
                               {userRole === 'admin' && (
                               <button 
                                 type="button"
@@ -776,6 +941,13 @@ function Sales({ activeView, userRole }) {
                         onClick={() => viewSaleDetails(sale.id)}
                       >
                         <Eye size={12} /> বিবরণী
+                      </button>
+                      <button 
+                        className="btn btn-secondary" 
+                        style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        onClick={() => openEditSaleModal(sale.id)}
+                      >
+                        <Edit2 size={12} /> এডিট
                       </button>
                       {userRole === 'admin' && (
                         <button 
@@ -967,6 +1139,210 @@ function Sales({ activeView, userRole }) {
                 বন্ধ করুন
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Sale Modal */}
+      {showEditModal && (
+        <div className="modal-overlay" style={{ zIndex: 2000 }}>
+          <div className="modal-content" style={{ maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <h2>বিক্রয় চালান সংশোধন (#{editSaleId})</h2>
+              <button className="btn-icon" onClick={() => setShowEditModal(false)}>&times;</button>
+            </div>
+
+            <form onSubmit={handleSaveSaleEdit}>
+              {/* Customer Info & Date */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>ক্রেতার নাম</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    placeholder="যেমন: আরমান হোসেন"
+                    value={editCustomerName}
+                    onChange={(e) => setEditCustomerName(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>মোবাইল নম্বর</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    placeholder="যেমন: 017xxxxxxxx"
+                    value={editCustomerPhone}
+                    onChange={(e) => setEditCustomerPhone(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>তারিখ ও সময়</label>
+                  <input 
+                    type="datetime-local" 
+                    className="form-control" 
+                    value={editSaleDate}
+                    onChange={(e) => setEditSaleDate(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Items List */}
+              <div style={{ marginBottom: '1.25rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '1rem', backgroundColor: 'var(--bg-primary)' }}>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: '700', marginBottom: '0.75rem' }}>চালানের অন্তর্ভুক্ত পণ্যসমূহ:</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '200px', overflowY: 'auto' }}>
+                  {editItems.map((item, index) => (
+                    <div key={index} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem', backgroundColor: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)' }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {item.name} {item.brand ? `[${item.brand}]` : ''}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          কেনা দাম: ৳{item.purchase_price.toFixed(2)}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>পরিমাণ:</span>
+                          <input 
+                            type="number" 
+                            min="1" 
+                            style={{ width: '55px', padding: '0.2rem 0.4rem', textAlign: 'center', fontSize: '0.85rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                            value={item.quantity}
+                            onChange={(e) => handleUpdateEditItemQty(index, e.target.value)}
+                          />
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>বিক্রয় (৳):</span>
+                          <input 
+                            type="number" 
+                            step="0.01" 
+                            min="0"
+                            style={{ width: '70px', padding: '0.2rem 0.4rem', textAlign: 'right', fontSize: '0.85rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                            value={item.selling_price}
+                            onChange={(e) => handleUpdateEditItemPrice(index, e.target.value)}
+                          />
+                        </div>
+
+                        <div style={{ minWidth: '70px', textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem' }}>
+                          ৳{(item.quantity * item.selling_price).toFixed(2)}
+                        </div>
+
+                        <button 
+                          type="button" 
+                          className="btn-icon delete" 
+                          style={{ padding: '0.2rem', color: 'var(--danger)' }}
+                          onClick={() => handleRemoveEditItem(index)}
+                          title="পণ্যটি বাদ দিন"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Add new product to invoice section */}
+                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed var(--border-color)', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>নতুন পণ্য যোগ করুন</label>
+                    <select 
+                      className="form-control" 
+                      style={{ fontSize: '0.8rem', padding: '0.3rem' }}
+                      value={newItemProductId}
+                      onChange={(e) => {
+                        setNewItemProductId(e.target.value);
+                        const p = allProductsList.find(pr => pr.id.toString() === e.target.value);
+                        if (p) setNewItemPrice(p.selling_price ? p.selling_price.toString() : '');
+                      }}
+                    >
+                      {allProductsList.map(p => (
+                        <option key={p.id} value={p.id.toString()}>
+                          {p.name} {p.brand ? `[${p.brand}]` : ''} - (স্টক: {p.stock_quantity}টি)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>পরিমাণ</label>
+                    <input 
+                      type="number" 
+                      min="1" 
+                      className="form-control" 
+                      style={{ fontSize: '0.8rem', padding: '0.3rem', textAlign: 'center' }}
+                      value={newItemQty}
+                      onChange={(e) => setNewItemQty(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>দর (৳)</label>
+                    <input 
+                      type="number" 
+                      step="0.01" 
+                      className="form-control" 
+                      style={{ fontSize: '0.8rem', padding: '0.3rem', textAlign: 'right' }}
+                      value={newItemPrice}
+                      onChange={(e) => setNewItemPrice(e.target.value)}
+                    />
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary" 
+                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.6rem' }}
+                    onClick={handleAddNewItemToEdit}
+                  >
+                    + যোগ
+                  </button>
+                </div>
+              </div>
+
+              {/* Totals and Discount */}
+              {(() => {
+                const subtotal = editItems.reduce((sum, it) => sum + (it.quantity * it.selling_price), 0);
+                const totalCost = editItems.reduce((sum, it) => sum + (it.quantity * it.purchase_price), 0);
+                const grandTotal = Math.max(0, subtotal - parseFloat(editDiscount || 0));
+                const profit = grandTotal - totalCost;
+
+                return (
+                  <div style={{ backgroundColor: 'var(--bg-secondary)', padding: '0.85rem', borderRadius: 'var(--radius-sm)', marginBottom: '1.5rem', border: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '0.9rem' }}>
+                      <span>মোট মূল্য (Subtotal):</span>
+                      <strong>৳{subtotal.toFixed(2)}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.4rem', fontSize: '0.9rem' }}>
+                      <span>ডিসকাউন্ট (৳):</span>
+                      <input 
+                        type="number" 
+                        min="0" 
+                        max={subtotal}
+                        step="0.01"
+                        style={{ width: '80px', padding: '0.2rem 0.4rem', textAlign: 'right', fontSize: '0.85rem', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
+                        value={editDiscount}
+                        onChange={(e) => setEditDiscount(e.target.value)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.4rem', fontSize: '1rem', fontWeight: 'bold', borderTop: '1px dashed var(--border-color)', paddingTop: '0.4rem' }}>
+                      <span>সর্বমোট আদায় (Grand Total):</span>
+                      <span style={{ color: 'var(--accent-color)' }}>৳{grandTotal.toFixed(2)}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', color: profit >= 0 ? 'var(--success)' : 'var(--danger)' }}>
+                      <span>মোট অর্জিত লাভ (Profit):</span>
+                      <strong>৳{profit.toFixed(2)}</strong>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="form-actions" style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>
+                  বাতিল
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={editSubmitting}>
+                  {editSubmitting ? 'সংরক্ষণ হচ্ছে...' : 'সংরক্ষণ করুন'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
