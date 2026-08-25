@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { pool, initDb } from './db.js';
+import { pool, initDb, reconcileCashTransactions } from './db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
@@ -710,8 +710,14 @@ app.delete('/api/purchases/invoice/:invoice_no', requireAdmin, async (req, res) 
   try {
     await client.query('BEGIN');
     
+    const cleanInvoiceNo = invoice_no.replace(/^#/, '');
+    const hashInvoiceNo = '#' + cleanInvoiceNo;
+    
     // 1. Get all items under this invoice_no
-    let itemsCheck = await client.query('SELECT * FROM purchases WHERE invoice_no = $1', [invoice_no]);
+    let itemsCheck = await client.query(
+      'SELECT * FROM purchases WHERE invoice_no = $1 OR invoice_no = $2 OR invoice_no = $3', 
+      [invoice_no, cleanInvoiceNo, hashInvoiceNo]
+    );
     
     // Fallback for legacy items where invoice_no was NULL
     if (itemsCheck.rows.length === 0) {
@@ -723,7 +729,14 @@ app.delete('/api/purchases/invoice/:invoice_no', requireAdmin, async (req, res) 
     }
     
     if (itemsCheck.rows.length === 0) {
-      throw new Error('Invoice not found');
+      // Clean up any orphan cash_transactions matching this invoice
+      await client.query(
+        `DELETE FROM cash_transactions 
+         WHERE source = 'purchase' AND (reference_id = $1 OR reference_id = $2 OR reference_id = $3)`,
+        [invoice_no, cleanInvoiceNo, hashInvoiceNo]
+      );
+      await client.query('COMMIT');
+      return res.json({ message: 'Purchase invoice and cash ledger cleaned up successfully' });
     }
     
     // 2. Adjust product stock levels
@@ -737,21 +750,23 @@ app.delete('/api/purchases/invoice/:invoice_no', requireAdmin, async (req, res) 
     }
     
     // 3. Delete purchases
-    if (itemsCheck.rows[0].invoice_no) {
-      await client.query('DELETE FROM purchases WHERE invoice_no = $1', [invoice_no]);
-    } else {
+    await client.query(
+      'DELETE FROM purchases WHERE invoice_no = $1 OR invoice_no = $2 OR invoice_no = $3', 
+      [invoice_no, cleanInvoiceNo, hashInvoiceNo]
+    );
+    if (itemsCheck.rows[0] && !itemsCheck.rows[0].invoice_no) {
       await client.query('DELETE FROM purchases WHERE id = $1', [itemsCheck.rows[0].id]);
     }
     
-    // Delete cash transaction
+    // 4. Delete cash transaction
     await client.query(
       `DELETE FROM cash_transactions 
-       WHERE source = 'purchase' AND reference_id = $1`,
-      [invoice_no]
+       WHERE source = 'purchase' AND (reference_id = $1 OR reference_id = $2 OR reference_id = $3 OR reference_id = $4)`,
+      [invoice_no, cleanInvoiceNo, hashInvoiceNo, itemsCheck.rows[0]?.id?.toString() || '']
     );
     
     await client.query('COMMIT');
-    res.json({ message: 'Purchase invoice deleted successfully' });
+    res.json({ message: 'Purchase invoice deleted successfully and cash ledger synced' });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
@@ -873,6 +888,24 @@ app.put('/api/purchases/:id', requirePermission('purchases'), async (req, res) =
       [qty, price, vendor_name || '', pDate, id]
     );
     
+    // 5. Sync cash transaction amount for the invoice
+    if (oldPurchase.invoice_no) {
+      const cleanInv = oldPurchase.invoice_no.replace(/^#/, '');
+      const invoiceTotalRes = await client.query(
+        'SELECT SUM(quantity * purchase_price) as total FROM purchases WHERE invoice_no = $1 OR invoice_no = $2',
+        [oldPurchase.invoice_no, cleanInv]
+      );
+      const newTotal = parseFloat(invoiceTotalRes.rows[0]?.total || 0);
+      if (newTotal > 0) {
+        await client.query(
+          `UPDATE cash_transactions 
+           SET amount = $1 
+           WHERE source = 'purchase' AND (reference_id = $2 OR reference_id = $3 OR reference_id = $4)`,
+          [newTotal, oldPurchase.invoice_no, cleanInv, '#' + cleanInv]
+        );
+      }
+    }
+
     await client.query('COMMIT');
     res.json(result.rows[0]);
   } catch (err) {
@@ -896,7 +929,7 @@ app.delete('/api/purchases/:id', requireAdmin, async (req, res) => {
     if (pCheck.rows.length === 0) {
       throw new Error('Purchase record not found');
     }
-    const { product_id, quantity } = pCheck.rows[0];
+    const { product_id, quantity, invoice_no } = pCheck.rows[0];
     
     // 2. Adjust product stock
     await client.query(
@@ -920,9 +953,39 @@ app.delete('/api/purchases/:id', requireAdmin, async (req, res) => {
         [latestPurchase.rows[0].purchase_price, product_id]
       );
     }
+
+    // 5. Update or delete associated cash transaction
+    if (invoice_no) {
+      const cleanInv = invoice_no.replace(/^#/, '');
+      const remainingItems = await client.query(
+        'SELECT SUM(quantity * purchase_price) as total FROM purchases WHERE invoice_no = $1 OR invoice_no = $2',
+        [invoice_no, cleanInv]
+      );
+      const remainingTotal = parseFloat(remainingItems.rows[0]?.total || 0);
+      if (remainingTotal > 0) {
+        await client.query(
+          `UPDATE cash_transactions 
+           SET amount = $1 
+           WHERE source = 'purchase' AND (reference_id = $2 OR reference_id = $3 OR reference_id = $4)`,
+          [remainingTotal, invoice_no, cleanInv, '#' + cleanInv]
+        );
+      } else {
+        await client.query(
+          `DELETE FROM cash_transactions 
+           WHERE source = 'purchase' AND (reference_id = $1 OR reference_id = $2 OR reference_id = $3)`,
+          [invoice_no, cleanInv, '#' + cleanInv]
+        );
+      }
+    } else {
+      await client.query(
+        `DELETE FROM cash_transactions 
+         WHERE source = 'purchase' AND reference_id = $1`,
+        [id.toString()]
+      );
+    }
     
     await client.query('COMMIT');
-    res.json({ message: 'Purchase record deleted successfully' });
+    res.json({ message: 'Purchase record deleted successfully and cash ledger synced' });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error(err);
@@ -1661,6 +1724,8 @@ app.get('/api/reports/stats', requirePermission('reports'), async (req, res) => 
 // Get cash summary and transaction logs
 app.get('/api/cash/summary', requirePermission('cash'), async (req, res) => {
   try {
+    await reconcileCashTransactions(pool);
+
     // 1. Current cash balance
     const balanceRes = await pool.query(
       `SELECT SUM(CASE WHEN type = 'inflow' THEN amount ELSE -amount END) as balance FROM cash_transactions`
@@ -1697,6 +1762,8 @@ app.get('/api/cash/summary', requirePermission('cash'), async (req, res) => {
 // Get transactions history
 app.get('/api/cash/transactions', requirePermission('cash'), async (req, res) => {
   try {
+    await reconcileCashTransactions(pool);
+
     const result = await pool.query(
       'SELECT * FROM cash_transactions ORDER BY transaction_date ASC, id ASC'
     );

@@ -237,6 +237,9 @@ const initDb = async () => {
 
     // Auto-allocate past unallocated sales to specific purchase batches (FIFO)
     await allocatePastSalesToBatches(client);
+
+    // Auto-reconcile cash transactions to remove any orphan logs and ensure exact sync
+    await reconcileCashTransactions(client);
   } catch (err) {
     console.error('Error initializing database tables:', err);
     throw err;
@@ -342,4 +345,62 @@ const allocatePastSalesToBatches = async (client) => {
   }
 };
 
-export { pool, initDb };
+const reconcileCashTransactions = async (client) => {
+  try {
+    // 1. Delete orphan purchase cash transactions where invoice_no or purchase id no longer exists in purchases table
+    await client.query(`
+      DELETE FROM cash_transactions ct
+      WHERE ct.source = 'purchase'
+        AND ct.reference_id != 'Legacy'
+        AND NOT EXISTS (
+          SELECT 1 FROM purchases p 
+          WHERE p.invoice_no = ct.reference_id 
+             OR '#' || p.invoice_no = ct.reference_id
+             OR p.invoice_no = REPLACE(ct.reference_id, '#', '')
+             OR CAST(p.id AS VARCHAR) = ct.reference_id
+        );
+    `);
+
+    // 2. Delete orphan sales cash transactions where sale id no longer exists
+    await client.query(`
+      DELETE FROM cash_transactions ct
+      WHERE ct.source = 'sale'
+        AND NOT EXISTS (
+          SELECT 1 FROM sales s WHERE CAST(s.id AS VARCHAR) = ct.reference_id
+        );
+    `);
+
+    // 3. Delete orphan expense cash transactions where expense id no longer exists
+    await client.query(`
+      DELETE FROM cash_transactions ct
+      WHERE ct.source = 'expense'
+        AND NOT EXISTS (
+          SELECT 1 FROM employee_expenses ee WHERE CAST(ee.id AS VARCHAR) = ct.reference_id
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM shop_expenses se WHERE CAST(se.id AS VARCHAR) = ct.reference_id
+        );
+    `);
+
+    // 4. Reconcile purchase amounts with current sum of items in each invoice
+    await client.query(`
+      UPDATE cash_transactions ct
+      SET amount = sub.total
+      FROM (
+        SELECT invoice_no, SUM(quantity * purchase_price) as total
+        FROM purchases
+        WHERE invoice_no IS NOT NULL
+        GROUP BY invoice_no
+      ) sub
+      WHERE ct.source = 'purchase' 
+        AND (ct.reference_id = sub.invoice_no OR ct.reference_id = '#' || sub.invoice_no OR ct.reference_id = REPLACE(sub.invoice_no, '#', ''))
+        AND ct.amount != sub.total;
+    `);
+
+    console.log('Cash transactions reconciled successfully.');
+  } catch (err) {
+    console.error('Error reconciling cash transactions:', err);
+  }
+};
+
+export { pool, initDb, reconcileCashTransactions };

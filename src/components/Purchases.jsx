@@ -269,7 +269,7 @@ function Purchases({ activeView, userRole }) {
     setConfirmModalMsg(`আপনি কি নিশ্চিতভাবে সম্পূর্ণ চালান #${invoiceNo} ডিলিট করতে চান? এর ফলে এই চালানের সব পণ্যের স্টক ডেটাবেজ থেকে পুনরুদ্ধার করা হবে!`);
     setConfirmAction(() => async () => {
       try {
-        const res = await fetch(`/api/purchases/invoice/${invoiceNo}`, { method: 'DELETE' });
+        const res = await fetch(`/api/purchases/invoice/${encodeURIComponent(invoiceNo)}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('Failed to delete purchase invoice');
         alert('ক্রয় চালানটি সফলভাবে ডিলিট করা হয়েছে এবং স্টক এডজাস্ট করা হয়েছে।');
         fetchData();
@@ -307,7 +307,7 @@ function Purchases({ activeView, userRole }) {
     setConfirmAction(() => async () => {
       try {
         for (const invoiceNo of selectedInvoices) {
-          const res = await fetch(`/api/purchases/invoice/${invoiceNo}`, { method: 'DELETE' });
+          const res = await fetch(`/api/purchases/invoice/${encodeURIComponent(invoiceNo)}`, { method: 'DELETE' });
           if (!res.ok) throw new Error(`Failed to delete invoice ${invoiceNo}`);
         }
         alert('নির্বাচিত ক্রয় চালানগুলো সফলভাবে ডিলিট করা হয়েছে এবং স্টক এডজাস্ট করা হয়েছে।');
