@@ -10,7 +10,15 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false
-  }
+  },
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+});
+
+// Handle idle connection errors gracefully
+pool.on('error', (err) => {
+  console.error('PostgreSQL idle client notice (auto-reconnecting):', err.message);
 });
 
 // Initialize database tables

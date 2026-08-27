@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, Edit2, AlertTriangle, X } from 'lucide-react';
+import { ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, Check, Eye, Edit2, AlertTriangle, X, RefreshCw } from 'lucide-react';
 
 function Sales({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('pos'); // 'pos' or 'history'
@@ -443,9 +443,19 @@ function Sales({ activeView, userRole }) {
       </div>
 
       {error && (
-        <div className="alert-box danger">
-          <Receipt size={20} />
-          <div>{error}</div>
+        <div className="alert-box danger" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <Receipt size={20} />
+            <div>{error}</div>
+          </div>
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }} 
+            onClick={() => fetchData()}
+          >
+            <RefreshCw size={14} /> পুনরায় চেষ্টা করুন
+          </button>
         </div>
       )}
 

@@ -10,25 +10,54 @@ import Login from './components/Login';
 import UsersManagement from './components/Users';
 import CashLedger from './components/CashLedger';
 
-// Intercept global fetch to inject JWT bearer tokens and handle auto-logout on session expiry (401)
+// Intercept global fetch to inject JWT bearer tokens, handle auto-retry on server wake-up/500s, and auto-logout on session expiry (401)
 const originalFetch = window.fetch;
 window.fetch = async function (url, options = {}) {
   const token = localStorage.getItem('store_token');
+  const headers = { ...options.headers };
   if (token) {
-    options.headers = {
-      ...options.headers,
-      'Authorization': `Bearer ${token}`
-    };
+    headers['Authorization'] = `Bearer ${token}`;
   }
-  const response = await originalFetch(url, options);
-  if (response.status === 401) {
-    localStorage.removeItem('store_token');
-    localStorage.removeItem('store_user');
-    if (token) {
-      window.location.reload();
+  const updatedOptions = { ...options, headers };
+
+  const isGet = !options.method || options.method.toUpperCase() === 'GET';
+  const maxAttempts = isGet ? 3 : 1;
+  let attempt = 0;
+  let lastError;
+
+  while (attempt < maxAttempts) {
+    try {
+      const response = await originalFetch(url, updatedOptions);
+
+      if (response.status === 401) {
+        localStorage.removeItem('store_token');
+        localStorage.removeItem('store_user');
+        if (token) {
+          window.location.reload();
+        }
+        return response;
+      }
+
+      // If server error (500-504, e.g. Neon cold-start wake-up delay), retry after exponential backoff
+      if (response.status >= 500 && isGet && attempt < maxAttempts - 1) {
+        attempt++;
+        await new Promise(res => setTimeout(res, attempt * 600));
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      lastError = err;
+      attempt++;
+      if (attempt < maxAttempts && isGet) {
+        await new Promise(res => setTimeout(res, attempt * 600));
+        continue;
+      }
+      throw err;
     }
   }
-  return response;
+
+  if (lastError) throw lastError;
 };
 
 function App() {

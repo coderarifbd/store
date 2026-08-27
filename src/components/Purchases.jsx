@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye, AlertTriangle, X } from 'lucide-react';
+import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye, AlertTriangle, X, RefreshCw } from 'lucide-react';
 
 function Purchases({ activeView, userRole }) {
   const [purchases, setPurchases] = useState([]);
@@ -510,9 +510,19 @@ function Purchases({ activeView, userRole }) {
       </div>
 
       {error && (
-        <div className="alert-box danger">
-          <AlertCircle size={20} />
-          <div>{error}</div>
+        <div className="alert-box danger" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <AlertCircle size={20} />
+            <div>{error}</div>
+          </div>
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            style={{ padding: '0.35rem 0.75rem', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }} 
+            onClick={() => fetchData()}
+          >
+            <RefreshCw size={14} /> পুনরায় চেষ্টা করুন
+          </button>
         </div>
       )}
 
