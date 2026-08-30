@@ -1039,7 +1039,7 @@ app.get('/api/sales/:id', async (req, res) => {
 
 // Log a sale and decrease stock
 app.post('/api/sales', requirePermission('sales'), async (req, res) => {
-  const { customer_name, customer_phone, discount, items, sale_date } = req.body;
+  const { customer_name, customer_phone, discount, items, sale_date, paid_amount, due_amount } = req.body;
   // items should be an array of: { product_id, quantity, selling_price, purchase_id }
   
   if (!items || items.length === 0) {
@@ -1160,12 +1160,16 @@ app.post('/api/sales', requirePermission('sales'), async (req, res) => {
     const final_amount = total_amount - disc;
     const profit = final_amount - total_cost;
     const sDate = sale_date ? new Date(sale_date) : new Date();
+
+    const final_paid = paid_amount !== undefined ? Math.min(final_amount, Math.max(0, parseFloat(paid_amount))) : final_amount;
+    const final_due = Math.max(0, final_amount - final_paid);
+    const payment_status = final_due === 0 ? 'paid' : (final_paid > 0 ? 'partial' : 'due');
     
     // 2. Insert into sales table
     const saleInsert = await client.query(
-      `INSERT INTO sales (customer_name, customer_phone, discount, total_amount, profit, sale_date)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [customer_name || '', customer_phone || '', disc, final_amount, profit, sDate]
+      `INSERT INTO sales (customer_name, customer_phone, discount, total_amount, paid_amount, due_amount, payment_status, profit, sale_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [customer_name || '', customer_phone || '', disc, final_amount, final_paid, final_due, payment_status, profit, sDate]
     );
     
     const saleId = saleInsert.rows[0].id;
@@ -1193,12 +1197,14 @@ app.post('/api/sales', requirePermission('sales'), async (req, res) => {
       );
     }
     
-    // Log cash transaction
-    await client.query(
-      `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
-       VALUES ('inflow', 'sale', $1, $2, $3, $4)`,
-      [final_amount, `পণ্য বিক্রি (Sale #${saleId})`, String(saleId), sDate]
-    );
+    // Log cash transaction (only the actual cash amount received into store)
+    if (final_paid > 0) {
+      await client.query(
+        `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+         VALUES ('inflow', 'sale', $1, $2, $3, $4)`,
+        [final_paid, `পণ্য বিক্রি (Sale #${saleId}${final_due > 0 ? ` - বাকি: ৳${final_due.toFixed(2)}` : ''})`, String(saleId), sDate]
+      );
+    }
     
     await client.query('COMMIT');
     res.status(201).json(saleInsert.rows[0]);
@@ -1212,10 +1218,10 @@ app.post('/api/sales', requirePermission('sales'), async (req, res) => {
 });
 
 
-// Edit a sale invoice (update customer details, discount, date, and items)
+// Edit a sale invoice (update customer details, discount, date, items, and payment/due)
 app.put('/api/sales/:id', requirePermission('sales'), async (req, res) => {
   const { id } = req.params;
-  const { customer_name, customer_phone, discount, sale_date, items } = req.body;
+  const { customer_name, customer_phone, discount, sale_date, items, paid_amount, due_amount } = req.body;
   
   const client = await pool.connect();
   try {
@@ -1387,13 +1393,29 @@ app.put('/api/sales/:id', requirePermission('sales'), async (req, res) => {
       final_amount = subtotal - disc;
       profit = final_amount - cost;
     }
+
+    // Payment and Due calculation
+    const final_paid = paid_amount !== undefined ? Math.min(final_amount, Math.max(0, parseFloat(paid_amount))) : (oldSale.paid_amount !== null ? Math.min(final_amount, parseFloat(oldSale.paid_amount)) : final_amount);
+    const final_due = Math.max(0, final_amount - final_paid);
+    const payment_status = final_due === 0 ? 'paid' : (final_paid > 0 ? 'partial' : 'due');
     
     // 4. Update sales table
     const updateResult = await client.query(
       `UPDATE sales 
-       SET customer_name = $1, customer_phone = $2, discount = $3, total_amount = $4, profit = $5, sale_date = $6 
-       WHERE id = $7 RETURNING *`,
-      [customer_name !== undefined ? customer_name : oldSale.customer_name, customer_phone !== undefined ? customer_phone : oldSale.customer_phone, disc, final_amount, profit, sDate, id]
+       SET customer_name = $1, customer_phone = $2, discount = $3, total_amount = $4, paid_amount = $5, due_amount = $6, payment_status = $7, profit = $8, sale_date = $9 
+       WHERE id = $10 RETURNING *`,
+      [
+        customer_name !== undefined ? customer_name : oldSale.customer_name, 
+        customer_phone !== undefined ? customer_phone : oldSale.customer_phone, 
+        disc, 
+        final_amount, 
+        final_paid, 
+        final_due, 
+        payment_status, 
+        profit, 
+        sDate, 
+        id
+      ]
     );
     
     // 5. Update cash transactions
@@ -1402,17 +1424,25 @@ app.put('/api/sales/:id', requirePermission('sales'), async (req, res) => {
       [String(id)]
     );
     if (cashCheck.rows.length > 0) {
-      await client.query(
-        `UPDATE cash_transactions 
-         SET amount = $1, transaction_date = $2 
-         WHERE source = 'sale' AND reference_id = $3`,
-        [final_amount, sDate, String(id)]
-      );
-    } else {
+      if (final_paid > 0) {
+        await client.query(
+          `UPDATE cash_transactions 
+           SET amount = $1, transaction_date = $2, description = $3 
+           WHERE source = 'sale' AND reference_id = $4`,
+          [final_paid, sDate, `পণ্য বিক্রি (Sale #${id}${final_due > 0 ? ` - বাকি: ৳${final_due.toFixed(2)}` : ''})`, String(id)]
+        );
+      } else {
+        await client.query(
+          `DELETE FROM cash_transactions 
+           WHERE source = 'sale' AND reference_id = $1`,
+          [String(id)]
+        );
+      }
+    } else if (final_paid > 0) {
       await client.query(
         `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
          VALUES ('inflow', 'sale', $1, $2, $3, $4)`,
-        [final_amount, `পণ্য বিক্রি (Sale #${id})`, String(id), sDate]
+        [final_paid, `পণ্য বিক্রি (Sale #${id}${final_due > 0 ? ` - বাকি: ৳${final_due.toFixed(2)}` : ''})`, String(id), sDate]
       );
     }
     
@@ -1422,6 +1452,69 @@ app.put('/api/sales/:id', requirePermission('sales'), async (req, res) => {
     await client.query('ROLLBACK');
     console.error(err);
     res.status(400).json({ error: err.message || 'Server error updating sale' });
+  } finally {
+    client.release();
+  }
+});
+
+// Collect Due Payment for a Sale
+app.post('/api/sales/:id/collect-due', requirePermission('sales'), async (req, res) => {
+  const { id } = req.params;
+  const { amount, payment_date, note } = req.body;
+  const payAmt = parseFloat(amount);
+  
+  if (isNaN(payAmt) || payAmt <= 0) {
+    return res.status(400).json({ error: 'পরিশোধের সঠিক পরিমাণ লিখুন' });
+  }
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    const saleCheck = await client.query('SELECT * FROM sales WHERE id = $1', [id]);
+    if (saleCheck.rows.length === 0) {
+      throw new Error('Sale record not found');
+    }
+    
+    const sale = saleCheck.rows[0];
+    const currentDue = parseFloat(sale.due_amount || 0);
+    
+    if (currentDue <= 0) {
+      throw new Error('এই চালানে কোনো বাকি নেই (Already fully paid)');
+    }
+    
+    if (payAmt > currentDue + 0.01) {
+      throw new Error(`পরিশোধের পরিমাণ বর্তমান বাকি (৳${currentDue.toFixed(2)}) থেকে বেশি হতে পারে না`);
+    }
+    
+    const actualPay = Math.min(payAmt, currentDue);
+    const newPaid = parseFloat(sale.paid_amount || 0) + actualPay;
+    const newDue = Math.max(0, currentDue - actualPay);
+    const newStatus = newDue === 0 ? 'paid' : 'partial';
+    const pDate = payment_date ? new Date(payment_date) : new Date();
+    
+    // 1. Update sale record
+    const updatedSale = await client.query(
+      `UPDATE sales 
+       SET paid_amount = $1, due_amount = $2, payment_status = $3 
+       WHERE id = $4 RETURNING *`,
+      [newPaid, newDue, newStatus, id]
+    );
+    
+    // 2. Insert into cash_transactions for this due collection
+    const custInfo = sale.customer_name ? ` - ${sale.customer_name}` : '';
+    await client.query(
+      `INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+       VALUES ('inflow', 'sale', $1, $2, $3, $4)`,
+      [actualPay, `বাকি আদায় (Sale #${id}${custInfo}${note ? ` - ${note}` : ''})`, String(id), pDate]
+    );
+    
+    await client.query('COMMIT');
+    res.json({ message: 'Due collected successfully', sale: updatedSale.rows[0] });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(400).json({ error: err.message || 'বাকি আদায় করতে সমস্যা হয়েছে' });
   } finally {
     client.release();
   }
@@ -1452,10 +1545,10 @@ app.delete('/api/sales/:id', requireAdmin, async (req, res) => {
     await client.query('DELETE FROM sale_items WHERE sale_id = $1', [id]);
     await client.query('DELETE FROM sales WHERE id = $1', [id]);
     
-    // Delete cash transaction
+    // Delete cash transactions (sale + any due collections)
     await client.query(
       `DELETE FROM cash_transactions 
-       WHERE source = 'sale' AND reference_id = $1`,
+       WHERE (source = 'sale' OR source = 'due_collection') AND reference_id = $1`,
       [id]
     );
     
@@ -1663,7 +1756,15 @@ app.get('/api/reports/summary', async (req, res) => {
       WHERE expense_date >= $1 AND expense_date < $2
     `, [monthStart, monthEnd]);
 
-    // 7. Top Selling Products
+    // 7. Overall outstanding dues summary
+    const dueSummaryResult = await pool.query(`
+      SELECT 
+        COALESCE(SUM(due_amount), 0) as total_due,
+        COUNT(CASE WHEN due_amount > 0 THEN 1 END) as due_count
+      FROM sales
+    `);
+
+    // 8. Top Selling Products
     const topSellingRes = await pool.query(`
       SELECT 
         p.id,
@@ -1678,7 +1779,7 @@ app.get('/api/reports/summary', async (req, res) => {
       LIMIT 5
     `);
 
-    // 8. Least Selling Products (with last sold date)
+    // 9. Least Selling Products (with last sold date)
     const leastSellingRes = await pool.query(`
       SELECT 
         p.id,
@@ -1708,6 +1809,10 @@ app.get('/api/reports/summary', async (req, res) => {
         purchases_total: parseFloat(purchasesResult.rows[0].total || 0),
         employee_expenses: parseFloat(empExpResult.rows[0].total || 0),
         shop_expenses: parseFloat(shopExpResult.rows[0].total || 0)
+      },
+      due_summary: {
+        total_due: parseFloat(dueSummaryResult.rows[0].total_due || 0),
+        due_count: parseInt(dueSummaryResult.rows[0].due_count || 0)
       },
       top_selling: topSellingRes.rows.map(r => ({
         id: r.id,

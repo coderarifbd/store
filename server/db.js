@@ -103,9 +103,20 @@ const initDb = async () => {
         customer_phone VARCHAR(20),
         discount NUMERIC(10, 2) DEFAULT 0.00,
         total_amount NUMERIC(10, 2) NOT NULL,
+        paid_amount NUMERIC(10, 2),
+        due_amount NUMERIC(10, 2) DEFAULT 0.00,
+        payment_status VARCHAR(20) DEFAULT 'paid',
         profit NUMERIC(10, 2) NOT NULL,
         sale_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+
+    // Migration to add paid_amount, due_amount, payment_status columns if missing
+    await client.query(`
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS paid_amount NUMERIC(10, 2);
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS due_amount NUMERIC(10, 2) DEFAULT 0.00;
+      ALTER TABLE sales ADD COLUMN IF NOT EXISTS payment_status VARCHAR(20) DEFAULT 'paid';
+      UPDATE sales SET paid_amount = total_amount, due_amount = 0.00, payment_status = 'paid' WHERE paid_amount IS NULL;
     `);
 
     // 4. Sale Items table
