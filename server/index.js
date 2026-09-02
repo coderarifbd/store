@@ -1521,6 +1521,173 @@ app.post('/api/sales/:id/collect-due', requirePermission('sales'), async (req, r
 });
 
 
+// Return or Exchange products from a sale (পণ্য ফেরত ও বদল)
+app.post('/api/sales/:id/return-or-exchange', requirePermission('sales'), async (req, res) => {
+  const { id } = req.params;
+  const {
+    return_type, // 'refund' | 'exchange'
+    returned_product_id,
+    returned_quantity,
+    return_unit_price,
+    exchange_product_id,
+    exchange_quantity,
+    exchange_unit_price,
+    reason,
+    return_date
+  } = req.body;
+
+  const retQty = parseInt(returned_quantity) || 1;
+  const retPrice = parseFloat(return_unit_price) || 0;
+  const totalReturnAmount = retQty * retPrice;
+
+  const exchQty = parseInt(exchange_quantity) || 0;
+  const exchPrice = parseFloat(exchange_unit_price) || 0;
+  const totalExchangeAmount = return_type === 'exchange' ? exchQty * exchPrice : 0;
+
+  // net_cash_adjustment: positive means customer pays extra money, negative means store refunds money to customer
+  const netCashAdjustment = totalExchangeAmount - totalReturnAmount;
+  const rDate = return_date ? new Date(return_date) : new Date();
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Verify sale exists
+    const saleRes = await client.query('SELECT * FROM sales WHERE id = $1', [id]);
+    if (saleRes.rows.length === 0) {
+      throw new Error('বিক্রয় চালানটি পাওয়া যায়নি');
+    }
+    const sale = saleRes.rows[0];
+
+    // 2. Increase returned product stock
+    if (returned_product_id) {
+      const prodCheck = await client.query('SELECT * FROM products WHERE id = $1', [returned_product_id]);
+      if (prodCheck.rows.length > 0) {
+        await client.query(
+          'UPDATE products SET stock_quantity = stock_quantity + $1 WHERE id = $2',
+          [retQty, returned_product_id]
+        );
+      }
+    }
+
+    // 3. If exchange, decrease exchange product stock
+    if (return_type === 'exchange' && exchange_product_id && exchQty > 0) {
+      const exchProdCheck = await client.query('SELECT * FROM products WHERE id = $1', [exchange_product_id]);
+      if (exchProdCheck.rows.length === 0) {
+        throw new Error('বিনিময়ের জন্য নির্বাচিত পণ্যটি পাওয়া যায়নি');
+      }
+      const exchProd = exchProdCheck.rows[0];
+      if (exchProd.stock_quantity < exchQty) {
+        throw new Error(`এক্সচেঞ্জ পণ্যের স্টক অপর্যাপ্ত (বর্তমান স্টক: ${exchProd.stock_quantity} টি)`);
+      }
+      await client.query(
+        'UPDATE products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
+        [exchQty, exchange_product_id]
+      );
+    }
+
+    // 4. Record the return/exchange in sales_returns table
+    const returnInsertRes = await client.query(`
+      INSERT INTO sales_returns (
+        sale_id, return_type, returned_product_id, returned_quantity, return_unit_price, total_return_amount,
+        exchange_product_id, exchange_quantity, exchange_unit_price, total_exchange_amount,
+        net_cash_adjustment, reason, return_date
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `, [
+      id, return_type, returned_product_id, retQty, retPrice, totalReturnAmount,
+      return_type === 'exchange' ? exchange_product_id : null,
+      return_type === 'exchange' ? exchQty : 0,
+      return_type === 'exchange' ? exchPrice : 0,
+      totalExchangeAmount,
+      netCashAdjustment,
+      reason || null,
+      rDate
+    ]);
+
+    // 5. Cash transaction adjustment
+    const custInfo = sale.customer_name ? ` - ${sale.customer_name}` : '';
+    if (netCashAdjustment < 0) {
+      // Store refunds money to customer -> Cash outflow
+      const refundAmount = Math.abs(netCashAdjustment);
+      await client.query(`
+        INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+        VALUES ('outflow', 'sales_return', $1, $2, $3, $4)
+      `, [
+        refundAmount,
+        `পণ্য ফেরত বাবদ ক্যাশ প্রদান (চালান #${id}${custInfo}${reason ? ` - ${reason}` : ''})`,
+        String(id),
+        rDate
+      ]);
+    } else if (netCashAdjustment > 0) {
+      // Customer pays extra money to store -> Cash inflow
+      await client.query(`
+        INSERT INTO cash_transactions (type, source, amount, description, reference_id, transaction_date)
+        VALUES ('inflow', 'sale', $1, $2, $3, $4)
+      `, [
+        netCashAdjustment,
+        `পণ্য বদল বাবদ অতিরিক্ত নগদ আদায় (চালান #${id}${custInfo}${reason ? ` - ${reason}` : ''})`,
+        String(id),
+        rDate
+      ]);
+    }
+
+    await client.query('COMMIT');
+    res.json({
+      message: return_type === 'exchange' ? 'পণ্য বদল সফলভাবে সম্পন্ন হয়েছে' : 'পণ্য ফেরত সফলভাবে সম্পন্ন হয়েছে',
+      return_record: returnInsertRes.rows[0]
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error(err);
+    res.status(400).json({ error: err.message || 'পণ্য ফেরত/বদল করতে সমস্যা হয়েছে' });
+  } finally {
+    client.release();
+  }
+});
+
+// Get return/exchange logs for a sale
+app.get('/api/sales/:id/returns', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await pool.query(`
+      SELECT sr.*, 
+        rp.name as returned_product_name, rp.brand as returned_product_brand,
+        ep.name as exchange_product_name, ep.brand as exchange_product_brand
+      FROM sales_returns sr
+      LEFT JOIN products rp ON sr.returned_product_id = rp.id
+      LEFT JOIN products ep ON sr.exchange_product_id = ep.id
+      WHERE sr.sale_id = $1
+      ORDER BY sr.id DESC
+    `, [id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching return records' });
+  }
+});
+
+// Get all sales returns list
+app.get('/api/sales-returns', requirePermission('sales'), async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT sr.*, s.customer_name, s.customer_phone,
+        rp.name as returned_product_name, rp.brand as returned_product_brand,
+        ep.name as exchange_product_name, ep.brand as exchange_product_brand
+      FROM sales_returns sr
+      LEFT JOIN sales s ON sr.sale_id = s.id
+      LEFT JOIN products rp ON sr.returned_product_id = rp.id
+      LEFT JOIN products ep ON sr.exchange_product_id = ep.id
+      ORDER BY sr.id DESC
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching returns' });
+  }
+});
+
+
 // Delete a sale log and restore stock
 app.delete('/api/sales/:id', requireAdmin, async (req, res) => {
   const { id } = req.params;

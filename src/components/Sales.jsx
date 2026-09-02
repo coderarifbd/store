@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, Search, Receipt, Plus, Minus, Trash2, User, Phone, 
   Check, Eye, Edit2, AlertTriangle, X, RefreshCw, DollarSign, Wallet, 
-  Filter, CheckCircle, Clock 
+  Filter, CheckCircle, Clock, RotateCcw, ArrowLeftRight 
 } from 'lucide-react';
 import { matchSearch, filterAndRankBySearch } from '../utils/searchHelper';
 
@@ -36,6 +36,23 @@ function Sales({ activeView, userRole }) {
   const [collectDueDate, setCollectDueDate] = useState('');
   const [collectDueNote, setCollectDueNote] = useState('');
   const [collectDueSubmitting, setCollectDueSubmitting] = useState(false);
+
+  // Return & Exchange Modal State
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnSale, setReturnSale] = useState(null);
+  const [returnSaleItems, setReturnSaleItems] = useState([]);
+  const [returnType, setReturnType] = useState('refund'); // 'refund' or 'exchange'
+  const [selectedReturnItem, setSelectedReturnItem] = useState(null);
+  const [returnQty, setReturnQty] = useState(1);
+  const [returnUnitPrice, setReturnUnitPrice] = useState('');
+  const [exchangeProductId, setExchangeProductId] = useState('');
+  const [exchangeProductSearchTerm, setExchangeProductSearchTerm] = useState('');
+  const [showExchangeProductDropdown, setShowExchangeProductDropdown] = useState(false);
+  const [exchangeQty, setExchangeQty] = useState(1);
+  const [exchangeUnitPrice, setExchangeUnitPrice] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [returnDate, setReturnDate] = useState('');
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
 
   // Edit Sale Modal State
   const [showEditModal, setShowEditModal] = useState(false);
@@ -464,6 +481,114 @@ function Sales({ activeView, userRole }) {
       alert(err.message);
     } finally {
       setEditSubmitting(false);
+    }
+  };
+
+  const openReturnModal = async (sale) => {
+    setReturnSale(sale);
+    setReturnType('refund');
+    setReturnReason('');
+    setReturnDate(new Date().toISOString().split('T')[0]);
+    setExchangeProductId('');
+    setExchangeProductSearchTerm('');
+    setShowExchangeProductDropdown(false);
+    setExchangeQty(1);
+    setExchangeUnitPrice('');
+
+    try {
+      const res = await fetch(`/api/sales/${sale.id}`);
+      if (!res.ok) throw new Error('Failed to load sale details');
+      const data = await res.json();
+      setReturnSaleItems(data.items || []);
+      if (data.items && data.items.length > 0) {
+        setSelectedReturnItem(data.items[0]);
+        setReturnQty(1);
+        setReturnUnitPrice(data.items[0].selling_price.toString());
+      } else {
+        setSelectedReturnItem(null);
+        setReturnQty(1);
+        setReturnUnitPrice('');
+      }
+
+      // Ensure all products are loaded for exchange selection
+      if (allProductsList.length === 0) {
+        const prodRes = await fetch('/api/products');
+        if (prodRes.ok) {
+          const prods = await prodRes.json();
+          setAllProductsList(prods);
+        }
+      }
+
+      setShowReturnModal(true);
+    } catch (err) {
+      console.error(err);
+      alert('চালানের বিবরণ লোড করা যায়নি');
+    }
+  };
+
+  const handleReturnItemChange = (item) => {
+    setSelectedReturnItem(item);
+    setReturnQty(1);
+    setReturnUnitPrice(item.selling_price.toString());
+  };
+
+  const handleSubmitReturnOrExchange = async (e) => {
+    e.preventDefault();
+    if (!selectedReturnItem) {
+      alert('ফেরত দেওয়ার জন্য একটি পণ্য নির্বাচন করুন');
+      return;
+    }
+
+    if (returnQty < 1 || returnQty > selectedReturnItem.quantity) {
+      alert(`ফেরতের পরিমাণ ১ থেকে ${selectedReturnItem.quantity} এর মধ্যে হতে হবে`);
+      return;
+    }
+
+    if (returnType === 'exchange') {
+      if (!exchangeProductId) {
+        alert('বিনিময়ের জন্য একটি নতুন পণ্য নির্বাচন করুন');
+        return;
+      }
+      if (exchangeQty < 1) {
+        alert('এক্সচেঞ্জ পণ্যের পরিমাণ অন্তত ১ হতে হবে');
+        return;
+      }
+    }
+
+    setReturnSubmitting(true);
+    try {
+      const payload = {
+        return_type: returnType,
+        returned_product_id: selectedReturnItem.product_id,
+        returned_quantity: parseInt(returnQty),
+        return_unit_price: parseFloat(returnUnitPrice || selectedReturnItem.selling_price),
+        exchange_product_id: returnType === 'exchange' ? parseInt(exchangeProductId) : null,
+        exchange_quantity: returnType === 'exchange' ? parseInt(exchangeQty) : 0,
+        exchange_unit_price: returnType === 'exchange' ? parseFloat(exchangeUnitPrice) : 0,
+        reason: returnReason,
+        return_date: returnDate
+      };
+
+      const res = await fetch(`/api/sales/${returnSale.id}/return-or-exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'পণ্য ফেরত/বদল করতে সমস্যা হয়েছে');
+      }
+
+      const data = await res.json();
+      alert(data.message || 'সফলভাবে সম্পন্ন হয়েছে');
+      setShowReturnModal(false);
+      fetchData();
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'পণ্য ফেরত/বদল ব্যর্থ হয়েছে');
+    } finally {
+      setReturnSubmitting(false);
     }
   };
 
@@ -1117,6 +1242,15 @@ function Sales({ activeView, userRole }) {
                                     >
                                       <Eye size={16} />
                                     </button>
+                                    <button 
+                                      type="button"
+                                      className="btn-icon" 
+                                      style={{ padding: '0.25rem', color: '#10b981', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '4px' }} 
+                                      onClick={() => openReturnModal(sale)}
+                                      title="পণ্য ফেরত ও বদল (Return & Exchange)"
+                                    >
+                                      <RotateCcw size={16} />
+                                    </button>
                                     {due > 0 && (
                                       <button 
                                         type="button"
@@ -1228,6 +1362,14 @@ function Sales({ activeView, userRole }) {
                               onClick={() => viewSaleDetails(sale.id)}
                             >
                               <Eye size={12} /> বিবরণী
+                            </button>
+                            <button 
+                              type="button"
+                              className="btn btn-secondary" 
+                              style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#10b981', borderColor: 'rgba(16, 185, 129, 0.4)' }}
+                              onClick={() => openReturnModal(sale)}
+                            >
+                              <RotateCcw size={12} /> ফেরত/বদল
                             </button>
                             {due > 0 && (
                               <button 
@@ -1922,6 +2064,338 @@ function Sales({ activeView, userRole }) {
                 হ্যাঁ, ডিলিট করুন
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Sales Return & Exchange Modal (পণ্য ফেরত ও বদল) */}
+      {showReturnModal && returnSale && (
+        <div className="modal-overlay" style={{ zIndex: 2050 }}>
+          <div className="modal-content" style={{ maxWidth: '650px', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="modal-header">
+              <div>
+                <h2>🔄 পণ্য ফেরত ও বদল (Return & Exchange)</h2>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                  ইনভয়েস: <strong>#{returnSale.id}</strong> | ক্রেতা: <strong>{returnSale.customer_name || 'সাধারণ ক্রেতা'}</strong>
+                </p>
+              </div>
+              <button className="btn-icon" onClick={() => setShowReturnModal(false)}>&times;</button>
+            </div>
+
+            <form onSubmit={handleSubmitReturnOrExchange}>
+              {/* Return Type Selector */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <button
+                  type="button"
+                  className={`btn ${returnType === 'refund' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '0.65rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', height: 'auto' }}
+                  onClick={() => setReturnType('refund')}
+                >
+                  <RotateCcw size={18} />
+                  <span style={{ fontWeight: 'bold' }}>১. শুধু টাকা ফেরত (Refund)</span>
+                  <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>পণ্য ফেরত নিয়ে নগদ টাকা প্রদান</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={`btn ${returnType === 'exchange' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '0.65rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', height: 'auto' }}
+                  onClick={() => setReturnType('exchange')}
+                >
+                  <ArrowLeftRight size={18} />
+                  <span style={{ fontWeight: 'bold' }}>২. পণ্য বদল (Exchange)</span>
+                  <span style={{ fontSize: '0.75rem', opacity: 0.8 }}>পণ্য ফেরত দিয়ে অন্য পণ্য দেওয়া</span>
+                </button>
+              </div>
+
+              {/* Section 1: Returned Product Selection */}
+              <div className="card" style={{ padding: '1rem', marginBottom: '1.25rem', backgroundColor: 'var(--bg-primary)' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.75rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <RotateCcw size={16} /> ফেরত আসা পণ্য (Returned Item)
+                </h4>
+
+                {returnSaleItems.length === 0 ? (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>এই চালানে কোনো পণ্য পাওয়া যায়নি।</div>
+                ) : (
+                  <>
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label style={{ fontSize: '0.8rem' }}>ফেরতকৃত পণ্য নির্বাচন করুন *</label>
+                      <select
+                        className="form-control"
+                        value={selectedReturnItem ? selectedReturnItem.id : ''}
+                        onChange={(e) => {
+                          const item = returnSaleItems.find(it => it.id.toString() === e.target.value);
+                          if (item) handleReturnItemChange(item);
+                        }}
+                        required
+                      >
+                        {returnSaleItems.map(it => (
+                          <option key={it.id} value={it.id}>
+                            {it.product_name} {it.product_brand ? `[${it.product_brand}]` : ''} - (বিক্রিত: {it.quantity} টি @ ৳{parseFloat(it.selling_price).toFixed(2)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {selectedReturnItem && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.8rem' }}>ফেরতের পরিমাণ (সর্বোচ্চ {selectedReturnItem.quantity} টি) *</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max={selectedReturnItem.quantity}
+                            className="form-control"
+                            value={returnQty}
+                            onChange={(e) => setReturnQty(Math.max(1, Math.min(selectedReturnItem.quantity, parseInt(e.target.value) || 1)))}
+                            required
+                          />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: '0.8rem' }}>ফেরতের একক মূল্য (৳) *</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            className="form-control"
+                            value={returnUnitPrice}
+                            onChange={(e) => setReturnUnitPrice(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: '0.65rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      ফেরত পণ্যের মোট মূল্য: <strong style={{ color: 'var(--danger)', fontSize: '0.95rem' }}>
+                        ৳{(parseInt(returnQty || 1) * parseFloat(returnUnitPrice || 0)).toFixed(2)}
+                      </strong>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Section 2: Exchange Product Selection (Only if exchange mode) */}
+              {returnType === 'exchange' && (
+                <div className="card" style={{ padding: '1rem', marginBottom: '1.25rem', backgroundColor: 'var(--bg-primary)' }}>
+                  <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '0.75rem', color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Plus size={16} /> নতুন যে পণ্যটি দেওয়া হচ্ছে (Exchange Item)
+                  </h4>
+
+                  <div className="form-group" style={{ position: 'relative', marginBottom: '0.75rem' }}>
+                    <label style={{ fontSize: '0.8rem' }}>নতুন পণ্য সার্চ করে নির্বাচন করুন *</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        type="text"
+                        className="form-control"
+                        placeholder="পণ্য বা মডেল সার্চ করুন..."
+                        value={exchangeProductSearchTerm}
+                        onChange={(e) => {
+                          setExchangeProductSearchTerm(e.target.value);
+                          setShowExchangeProductDropdown(true);
+                        }}
+                        onFocus={() => setShowExchangeProductDropdown(true)}
+                      />
+                      {exchangeProductSearchTerm && (
+                        <button
+                          type="button"
+                          className="btn-icon"
+                          style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', padding: '2px', color: 'var(--text-muted)' }}
+                          onClick={() => {
+                            setExchangeProductSearchTerm('');
+                            setExchangeProductId('');
+                            setExchangeUnitPrice('');
+                          }}
+                        >
+                          &times;
+                        </button>
+                      )}
+                    </div>
+
+                    {showExchangeProductDropdown && (
+                      <>
+                        <div 
+                          style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2060 }}
+                          onClick={() => setShowExchangeProductDropdown(false)}
+                        />
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          maxHeight: '220px',
+                          overflowY: 'auto',
+                          backgroundColor: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-sm)',
+                          boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                          zIndex: 2070
+                        }}>
+                          {(() => {
+                            const filtered = filterAndRankBySearch(
+                              allProductsList.length > 0 ? allProductsList : products,
+                              p => [p.name, p.brand, p.model, p.category, p.id ? p.id.toString() : ''],
+                              exchangeProductSearchTerm
+                            );
+
+                            if (filtered.length === 0) {
+                              return (
+                                <div style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                                  কোনো পণ্য পাওয়া যায়নি
+                                </div>
+                              );
+                            }
+
+                            return filtered.map(p => (
+                              <div
+                                key={p.id}
+                                style={{
+                                  padding: '0.5rem 0.65rem',
+                                  borderBottom: '1px solid var(--border-color)',
+                                  cursor: 'pointer',
+                                  backgroundColor: exchangeProductId === p.id.toString() ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                  transition: 'background-color 0.15s'
+                                }}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setExchangeProductId(p.id.toString());
+                                  setExchangeProductSearchTerm(`${p.name}${p.brand ? ` [${p.brand}]` : ''}`);
+                                  setExchangeUnitPrice(p.selling_price ? p.selling_price.toString() : '');
+                                  setShowExchangeProductDropdown(false);
+                                }}
+                              >
+                                <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                                  {p.name} {p.brand ? <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '0.75rem' }}>[{p.brand}]</span> : ''}
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                  <span>স্টক: <strong style={{ color: p.stock_quantity > 0 ? 'var(--success)' : 'var(--danger)' }}>{p.stock_quantity} টি</strong></span>
+                                  <span>বিক্রয় দর: <strong style={{ color: 'var(--accent-color)' }}>৳{parseFloat(p.selling_price || 0).toFixed(2)}</strong></span>
+                                </div>
+                              </div>
+                            ));
+                          })()}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.8rem' }}>নতুন পণ্যের পরিমাণ *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        className="form-control"
+                        value={exchangeQty}
+                        onChange={(e) => setExchangeQty(Math.max(1, parseInt(e.target.value) || 1))}
+                        required={returnType === 'exchange'}
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: '0.8rem' }}>বিক্রয় দর (৳) *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="form-control"
+                        value={exchangeUnitPrice}
+                        onChange={(e) => setExchangeUnitPrice(e.target.value)}
+                        required={returnType === 'exchange'}
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '0.65rem', textAlign: 'right', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    নতুন পণ্যের মোট মূল্য: <strong style={{ color: 'var(--success)', fontSize: '0.95rem' }}>
+                      ৳{(parseInt(exchangeQty || 1) * parseFloat(exchangeUnitPrice || 0)).toFixed(2)}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {/* Section 3: Calculation & Settlement Summary */}
+              {(() => {
+                const retTotal = parseInt(returnQty || 1) * parseFloat(returnUnitPrice || 0);
+                const exchTotal = returnType === 'exchange' ? parseInt(exchangeQty || 1) * parseFloat(exchangeUnitPrice || 0) : 0;
+                const netAdjustment = exchTotal - retTotal;
+
+                return (
+                  <div style={{
+                    padding: '1rem',
+                    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border-color)',
+                    marginBottom: '1.25rem'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem' }}>
+                      <span>ফেরত পণ্যের মূল্য:</span>
+                      <strong style={{ color: 'var(--danger)' }}>-৳{retTotal.toFixed(2)}</strong>
+                    </div>
+
+                    {returnType === 'exchange' && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', fontSize: '0.85rem' }}>
+                        <span>নতুন পণ্যের মূল্য:</span>
+                        <strong style={{ color: 'var(--success)' }}>+৳{exchTotal.toFixed(2)}</strong>
+                      </div>
+                    )}
+
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: '1px dashed var(--border-color)',
+                      paddingTop: '0.5rem',
+                      marginTop: '0.5rem'
+                    }}>
+                      <span style={{ fontWeight: 'bold' }}>চূড়ান্ত সমন্বয় / ক্যাশ লেনদেন:</span>
+                      {netAdjustment < 0 ? (
+                        <span className="badge danger" style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
+                          🔴 গ্রাহককে নগদ ফেরত দিতে হবে: ৳{Math.abs(netAdjustment).toFixed(2)}
+                        </span>
+                      ) : netAdjustment > 0 ? (
+                        <span className="badge success" style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>
+                          🟢 গ্রাহকের কাছ থেকে আদায় করতে হবে: ৳{netAdjustment.toFixed(2)}
+                        </span>
+                      ) : (
+                        <span className="badge" style={{ fontSize: '0.9rem', backgroundColor: 'var(--border-color)' }}>
+                          ⚪ সমান সমান বিনিময় (ক্যাশ লেনদেন নেই)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Date & Reason */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '0.8rem' }}>তারিখ *</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={{ fontSize: '0.8rem' }}>কারণ / নোট (ঐচ্ছিক)</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="যেমন: সাইজ সমস্যা, পণ্যটিতে সমস্যা ছিল..."
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="form-actions" style={{ marginTop: '1.25rem' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setShowReturnModal(false)}>
+                  বাতিল
+                </button>
+                <button type="submit" className="btn btn-primary" disabled={returnSubmitting}>
+                  {returnSubmitting ? 'প্রসেসিং হচ্ছে...' : (returnType === 'exchange' ? '🔄 পণ্য বদল নিশ্চিত করুন' : '🔄 পণ্য ফেরত নিশ্চিত করুন')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

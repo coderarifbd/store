@@ -138,6 +138,26 @@ const initDb = async () => {
       ADD COLUMN IF NOT EXISTS purchase_id INT REFERENCES purchases(id) ON DELETE SET NULL;
     `);
 
+    // 4.5 Sales Returns & Exchanges table (পণ্য ফেরত ও বদল)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sales_returns (
+        id SERIAL PRIMARY KEY,
+        sale_id INT REFERENCES sales(id) ON DELETE CASCADE,
+        return_type VARCHAR(20) NOT NULL DEFAULT 'refund',
+        returned_product_id INT REFERENCES products(id) ON DELETE SET NULL,
+        returned_quantity INT NOT NULL DEFAULT 1,
+        return_unit_price NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        total_return_amount NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        exchange_product_id INT REFERENCES products(id) ON DELETE SET NULL,
+        exchange_quantity INT DEFAULT 0,
+        exchange_unit_price NUMERIC(10, 2) DEFAULT 0.00,
+        total_exchange_amount NUMERIC(10, 2) DEFAULT 0.00,
+        net_cash_adjustment NUMERIC(10, 2) NOT NULL DEFAULT 0.00,
+        reason TEXT,
+        return_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // 5. Employee Expenses table
     await client.query(`
       CREATE TABLE IF NOT EXISTS employee_expenses (
