@@ -1939,6 +1939,43 @@ app.get('/api/reports/monthly', requirePermission('reports'), async (req, res) =
   }
 });
 
+// Detailed sales for a specific date (for date click in reports)
+app.get('/api/reports/daily-sales', requirePermission('reports'), async (req, res) => {
+  const { date } = req.query;
+  if (!date) {
+    return res.status(400).json({ error: 'Date parameter is required (YYYY-MM-DD)' });
+  }
+
+  try {
+    const query = `
+      SELECT 
+        s.*,
+        COALESCE(json_agg(
+          json_build_object(
+            'id', si.id,
+            'product_id', si.product_id,
+            'product_name', p.name,
+            'product_brand', p.brand,
+            'product_model', p.model,
+            'quantity', si.quantity,
+            'selling_price', si.selling_price
+          )
+        ) FILTER (WHERE si.id IS NOT NULL), '[]') as items
+      FROM sales s
+      LEFT JOIN sale_items si ON s.id = si.sale_id
+      LEFT JOIN products p ON si.product_id = p.id
+      WHERE DATE(s.sale_date) = $1
+      GROUP BY s.id
+      ORDER BY s.id DESC
+    `;
+    const result = await pool.query(query, [date]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error fetching daily sales' });
+  }
+});
+
 // Yearly report data (sales, expenses, purchases by month for a given year)
 app.get('/api/reports/yearly', requirePermission('reports'), async (req, res) => {
   const { year } = req.query;
