@@ -47,6 +47,8 @@ function Sales({ activeView, userRole }) {
   const [editItems, setEditItems] = useState([]);
   const [allProductsList, setAllProductsList] = useState([]);
   const [newItemProductId, setNewItemProductId] = useState('');
+  const [editProductSearchTerm, setEditProductSearchTerm] = useState('');
+  const [showEditProductDropdown, setShowEditProductDropdown] = useState(false);
   const [newItemQty, setNewItemQty] = useState(1);
   const [newItemPrice, setNewItemPrice] = useState('');
   const [editSubmitting, setEditSubmitting] = useState(false);
@@ -348,11 +350,11 @@ function Sales({ activeView, userRole }) {
         purchase_id: it.purchase_id
       })));
 
-      if (prods.length > 0) {
-        setNewItemProductId(prods[0].id.toString());
-        setNewItemPrice(prods[0].selling_price ? prods[0].selling_price.toString() : '');
-        setNewItemQty(1);
-      }
+      setNewItemProductId('');
+      setNewItemPrice('');
+      setNewItemQty(1);
+      setEditProductSearchTerm('');
+      setShowEditProductDropdown(false);
 
       setShowEditModal(true);
     } catch (err) {
@@ -381,7 +383,11 @@ function Sales({ activeView, userRole }) {
   };
 
   const handleAddNewItemToEdit = () => {
-    const prod = allProductsList.find(p => p.id.toString() === newItemProductId);
+    if (!newItemProductId) {
+      alert('দয়া করে সার্চ বক্সে পণ্য খুঁজে সিলেক্ট করুন');
+      return;
+    }
+    const prod = allProductsList.find(p => p.id.toString() === newItemProductId.toString());
     if (!prod) return;
     const qty = parseInt(newItemQty);
     const price = parseFloat(newItemPrice);
@@ -406,6 +412,10 @@ function Sales({ activeView, userRole }) {
     }]);
 
     setNewItemQty(1);
+    setNewItemProductId('');
+    setNewItemPrice('');
+    setEditProductSearchTerm('');
+    setShowEditProductDropdown(false);
   };
 
   const handleSaveSaleEdit = async (e) => {
@@ -1651,56 +1661,164 @@ function Sales({ activeView, userRole }) {
                 </div>
 
                 {/* Add new product to invoice section */}
-                <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed var(--border-color)', display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '0.5rem', alignItems: 'end' }}>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>নতুন পণ্য যোগ করুন</label>
-                    <select 
-                      className="form-control" 
-                      style={{ fontSize: '0.8rem', padding: '0.3rem' }}
-                      value={newItemProductId}
-                      onChange={(e) => {
-                        setNewItemProductId(e.target.value);
-                        const p = allProductsList.find(pr => pr.id.toString() === e.target.value);
-                        if (p) setNewItemPrice(p.selling_price ? p.selling_price.toString() : '');
-                      }}
+                <div style={{ marginTop: '0.85rem', paddingTop: '0.85rem', borderTop: '1px dashed var(--border-color)' }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: '600', color: 'var(--text-primary)', display: 'block', marginBottom: '0.35rem' }}>
+                    নতুন পণ্য যোগ করুন (সার্চ করুন)
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2.5fr) 75px 95px auto', gap: '0.5rem', alignItems: 'start' }}>
+                    {/* Searchable Product Dropdown / Combobox */}
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '8px', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+                        <input
+                          type="text"
+                          className="form-control"
+                          style={{ fontSize: '0.85rem', padding: '0.35rem 1.6rem 0.35rem 1.75rem', width: '100%' }}
+                          placeholder="পণ্য খুঁজুন (নাম/ব্র্যান্ড)..."
+                          value={editProductSearchTerm}
+                          onChange={(e) => {
+                            setEditProductSearchTerm(e.target.value);
+                            setShowEditProductDropdown(true);
+                            if (!e.target.value.trim()) {
+                              setNewItemProductId('');
+                              setNewItemPrice('');
+                            }
+                          }}
+                          onFocus={() => setShowEditProductDropdown(true)}
+                        />
+                        {editProductSearchTerm && (
+                          <button
+                            type="button"
+                            style={{ position: 'absolute', right: '6px', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center' }}
+                            onClick={() => {
+                              setEditProductSearchTerm('');
+                              setNewItemProductId('');
+                              setNewItemPrice('');
+                              setShowEditProductDropdown(true);
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Dropdown list */}
+                      {showEditProductDropdown && (
+                        <>
+                          <div 
+                            style={{ position: 'fixed', inset: 0, zIndex: 2010 }} 
+                            onClick={() => setShowEditProductDropdown(false)} 
+                          />
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            marginTop: '4px',
+                            maxHeight: '220px',
+                            overflowY: 'auto',
+                            backgroundColor: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: 'var(--radius-sm)',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+                            zIndex: 2020
+                          }}>
+                            {(() => {
+                              const term = editProductSearchTerm.trim().toLowerCase();
+                              const filtered = allProductsList.filter(p => {
+                                if (!term) return true;
+                                return (p.name || '').toLowerCase().includes(term) ||
+                                       (p.brand || '').toLowerCase().includes(term) ||
+                                       (p.model || '').toLowerCase().includes(term) ||
+                                       (p.category || '').toLowerCase().includes(term) ||
+                                       p.id.toString().includes(term);
+                              });
+
+                              if (filtered.length === 0) {
+                                return (
+                                  <div style={{ padding: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                                    কোনো পণ্য পাওয়া যায়নি
+                                  </div>
+                                );
+                              }
+
+                              return filtered.map(p => {
+                                const isSelected = newItemProductId === p.id.toString();
+                                return (
+                                  <div
+                                    key={p.id}
+                                    style={{
+                                      padding: '0.5rem 0.65rem',
+                                      borderBottom: '1px solid var(--border-color)',
+                                      cursor: 'pointer',
+                                      backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.2)' : 'transparent',
+                                      transition: 'background-color 0.15s'
+                                    }}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                    onClick={() => {
+                                      setNewItemProductId(p.id.toString());
+                                      setEditProductSearchTerm(`${p.name}${p.brand ? ` [${p.brand}]` : ''}`);
+                                      setNewItemPrice(p.selling_price ? p.selling_price.toString() : '');
+                                      setShowEditProductDropdown(false);
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 'bold', fontSize: '0.85rem', color: 'var(--text-primary)' }}>
+                                      {p.name} {p.brand ? <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '0.75rem' }}>[{p.brand}]</span> : ''}
+                                      {p.model ? <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '0.75rem' }}> ({p.model})</span> : ''}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+                                      <span>স্টক: <strong style={{ color: p.stock_quantity > 0 ? 'var(--success)' : 'var(--danger)' }}>{p.stock_quantity} টি</strong></span>
+                                      <span>দর: <strong style={{ color: 'var(--accent-color)' }}>৳{parseFloat(p.selling_price || 0).toFixed(2)}</strong></span>
+                                    </div>
+                                  </div>
+                                );
+                              });
+                            })()}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Selected indicator */}
+                      {newItemProductId && (
+                        <div style={{ fontSize: '0.7rem', color: 'var(--success)', marginTop: '2px' }}>
+                          ✓ পণ্য সিলেক্ট করা হয়েছে
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <input 
+                        type="number" 
+                        min="1" 
+                        className="form-control" 
+                        style={{ fontSize: '0.85rem', padding: '0.35rem', textAlign: 'center', width: '100%' }}
+                        value={newItemQty}
+                        onChange={(e) => setNewItemQty(e.target.value)}
+                        placeholder="পরিমাণ"
+                        title="পরিমাণ"
+                      />
+                    </div>
+                    <div>
+                      <input 
+                        type="number" 
+                        step="0.01" 
+                        className="form-control" 
+                        style={{ fontSize: '0.85rem', padding: '0.35rem', textAlign: 'right', width: '100%' }}
+                        value={newItemPrice}
+                        onChange={(e) => setNewItemPrice(e.target.value)}
+                        placeholder="দর (৳)"
+                        title="বিক্রয় দর"
+                      />
+                    </div>
+                    <button 
+                      type="button" 
+                      className="btn btn-secondary" 
+                      style={{ fontSize: '0.85rem', padding: '0.35rem 0.65rem', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      onClick={handleAddNewItemToEdit}
                     >
-                      {allProductsList.map(p => (
-                        <option key={p.id} value={p.id.toString()}>
-                          {p.name} {p.brand ? `[${p.brand}]` : ''} - (স্টক: {p.stock_quantity}টি)
-                        </option>
-                      ))}
-                    </select>
+                      <Plus size={14} /> যোগ
+                    </button>
                   </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>পরিমাণ</label>
-                    <input 
-                      type="number" 
-                      min="1" 
-                      className="form-control" 
-                      style={{ fontSize: '0.8rem', padding: '0.3rem', textAlign: 'center' }}
-                      value={newItemQty}
-                      onChange={(e) => setNewItemQty(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)', display: 'block', marginBottom: '0.2rem' }}>দর (৳)</label>
-                    <input 
-                      type="number" 
-                      step="0.01" 
-                      className="form-control" 
-                      style={{ fontSize: '0.8rem', padding: '0.3rem', textAlign: 'right' }}
-                      value={newItemPrice}
-                      onChange={(e) => setNewItemPrice(e.target.value)}
-                    />
-                  </div>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary" 
-                    style={{ fontSize: '0.8rem', padding: '0.35rem 0.6rem' }}
-                    onClick={handleAddNewItemToEdit}
-                  >
-                    + যোগ
-                  </button>
                 </div>
               </div>
 
