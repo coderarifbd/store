@@ -694,21 +694,22 @@ function Reports({ activeView }) {
       {/* Date Sales List Modal */}
       {showDateSalesModal && selectedDateInfo && (
         <div className="modal-overlay" style={{ zIndex: 2000 }}>
-          <div className="modal-content" style={{ maxWidth: '850px', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div className="modal-header">
+          <div className="modal-content" style={{ maxWidth: '1000px', width: '95vw', maxHeight: '90vh', overflowY: 'auto', padding: '1.75rem' }}>
+            <div className="modal-header" style={{ marginBottom: '1.25rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.75rem' }}>
               <div>
-                <h2>দৈনিক বিক্রয় চালান তালিকা</h2>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                  তারিখ: <strong>{selectedDateInfo.displayDate}</strong> ({selectedDateInfo.dateStr})
-                </p>
+                <h2 style={{ fontSize: '1.3rem', fontWeight: '700', color: 'var(--text-primary)' }}>দৈনিক বিক্রয় চালান তালিকা</h2>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>তারিখ: <strong style={{ color: 'var(--accent-color)' }}>{selectedDateInfo.displayDate}</strong></span>
+                  <span style={{ opacity: 0.6 }}>({selectedDateInfo.dateStr})</span>
+                </div>
               </div>
-              <button className="btn-icon" onClick={() => setShowDateSalesModal(false)}>&times;</button>
+              <button className="btn-icon" onClick={() => setShowDateSalesModal(false)} title="বন্ধ করুন">&times;</button>
             </div>
 
             {dateSalesLoading ? (
               <div style={{ textAlign: 'center', padding: '3rem' }}>
-                <RefreshCw size={24} className="spin" style={{ margin: '0 auto 0.5rem auto', color: 'var(--accent-color)' }} />
-                <div>বিক্রয় তথ্য লোড হচ্ছে...</div>
+                <RefreshCw size={28} className="spin" style={{ margin: '0 auto 0.75rem auto', color: 'var(--accent-color)' }} />
+                <div style={{ fontSize: '0.95rem', color: 'var(--text-secondary)' }}>বিক্রয় তথ্য লোড হচ্ছে...</div>
               </div>
             ) : dateSalesList.length === 0 ? (
               <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -726,171 +727,192 @@ function Reports({ activeView }) {
                   return (
                     <div style={{ 
                       display: 'grid', 
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', 
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', 
                       gap: '0.75rem', 
-                      marginBottom: '1.25rem',
-                      padding: '0.85rem',
+                      marginBottom: '1.5rem',
+                      padding: '1rem',
                       backgroundColor: 'var(--bg-primary)',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-color)'
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-color)',
+                      boxShadow: 'var(--shadow-sm)'
                     }}>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>মোট চালান</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold' }}>{dateSalesList.length} টি</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>মোট চালান</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>{dateSalesList.length} টি</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>মোট বিক্রি</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>৳{dayTotalSales.toFixed(2)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>মোট বিক্রি</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--accent-color)' }}>৳{dayTotalSales.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>মোট লাভ</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: dayTotalProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>৳{dayTotalProfit.toFixed(2)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>মোট লাভ</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: dayTotalProfit >= 0 ? 'var(--success)' : 'var(--danger)' }}>৳{dayTotalProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>নগদ আদায়</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--success)' }}>৳{dayTotalPaid.toFixed(2)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>নগদ আদায়</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--success)' }}>৳{dayTotalPaid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
                       </div>
                       <div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>বাকি (Due)</div>
-                        <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: dayTotalDue > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>৳{dayTotalDue.toFixed(2)}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '2px' }}>বাকি (Due)</div>
+                        <div style={{ fontSize: '1.25rem', fontWeight: 'bold', color: dayTotalDue > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>৳{dayTotalDue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
                       </div>
                     </div>
                   );
                 })()}
 
-                {/* Sales Table (Desktop) */}
-                <div className="table-container desktop-only-view" style={{ maxHeight: '450px', overflowY: 'auto' }}>
-                  <table className="data-table" style={{ fontSize: '0.85rem' }}>
-                    <thead>
-                      <tr>
-                        <th style={{ width: '80px' }}>ইনভয়েস</th>
-                        <th>ক্রেতার বিবরণ</th>
-                        <th>বিক্রিত পণ্যসমূহ (পরিমাণ ও দর)</th>
-                        <th style={{ textAlign: 'right' }}>সর্বমোট</th>
-                        <th style={{ textAlign: 'right' }}>পরিশোধ</th>
-                        <th style={{ textAlign: 'center' }}>বাকি</th>
-                        <th style={{ textAlign: 'right' }}>লাভ</th>
-                        <th style={{ textAlign: 'center', width: '60px' }}>একশন</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dateSalesList.map(sale => {
-                        const paid = parseFloat(sale.paid_amount !== null && sale.paid_amount !== undefined ? sale.paid_amount : sale.total_amount);
-                        const due = parseFloat(sale.due_amount || 0);
-
-                        return (
-                          <tr key={sale.id}>
-                            <td><strong>#{sale.id}</strong></td>
-                            <td>
-                              <div><strong>{sale.customer_name || 'সাধারণ ক্রেতা'}</strong></div>
-                              {sale.customer_phone && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sale.customer_phone}</div>}
-                            </td>
-                            <td>
-                              <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                                {sale.items && sale.items.length > 0 ? (
-                                  sale.items.map((it, idx) => (
-                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '2px 0', borderBottom: idx < sale.items.length - 1 ? '1px dashed var(--border-color)' : 'none' }}>
-                                      <span>• {it.product_name} {it.product_brand ? `[${it.product_brand}]` : ''}</span>
-                                      <span style={{ whiteSpace: 'nowrap' }}>
-                                        <strong style={{ color: 'var(--accent-color)' }}>{it.quantity}টি</strong> &times; <strong>৳{parseFloat(it.selling_price || 0).toFixed(2)}</strong>
-                                      </span>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <span style={{ color: 'var(--text-muted)' }}>পণ্য তথ্য নেই</span>
-                                )}
-                              </div>
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 'bold' }}>৳{parseFloat(sale.total_amount).toFixed(2)}</td>
-                            <td style={{ textAlign: 'right', color: 'var(--success)' }}>৳{paid.toFixed(2)}</td>
-                            <td style={{ textAlign: 'center' }}>
-                              {due > 0 ? (
-                                <span className="badge danger" style={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
-                                  ৳{due.toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className="badge success" style={{ fontSize: '0.75rem' }}>পরিশোধ</span>
-                              )}
-                            </td>
-                            <td style={{ textAlign: 'right', fontWeight: 'bold', color: parseFloat(sale.profit) >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                              ৳{parseFloat(sale.profit).toFixed(2)}
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <button
-                                type="button"
-                                className="btn-icon"
-                                style={{ padding: '0.25rem' }}
-                                title="সম্পূর্ণ ইনভয়েস দেখুন"
-                                onClick={() => handleViewInvoiceDetails(sale.id)}
-                              >
-                                <Eye size={16} />
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Sales Cards (Mobile) */}
-                <div className="mobile-card-list-view">
-                  {dateSalesList.map(sale => {
+                {/* Invoices List with Detailed Product breakdown */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  {dateSalesList.map((sale) => {
                     const paid = parseFloat(sale.paid_amount !== null && sale.paid_amount !== undefined ? sale.paid_amount : sale.total_amount);
                     const due = parseFloat(sale.due_amount || 0);
 
                     return (
-                      <div key={sale.id} className="mobile-product-card" style={{ marginBottom: '0.75rem' }}>
-                        <div className="card-header">
-                          <div>
-                            <strong>চালান: #{sale.id}</strong>
+                      <div 
+                        key={sale.id}
+                        style={{
+                          backgroundColor: 'var(--bg-primary)',
+                          border: '1px solid var(--border-color)',
+                          borderRadius: 'var(--radius-md)',
+                          overflow: 'hidden',
+                          boxShadow: 'var(--shadow-sm)'
+                        }}
+                      >
+                        {/* Invoice Card Header */}
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '0.75rem',
+                          padding: '0.75rem 1rem',
+                          backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                          borderBottom: '1px solid var(--border-color)'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexWrap: 'wrap' }}>
+                            <span style={{ 
+                              fontSize: '0.9rem', 
+                              fontWeight: 'bold', 
+                              color: '#fff', 
+                              backgroundColor: 'var(--accent-color)', 
+                              padding: '0.2rem 0.65rem', 
+                              borderRadius: 'var(--radius-sm)' 
+                            }}>
+                              ইনভয়েস #{sale.id}
+                            </span>
+                            <span style={{ fontSize: '0.9rem', color: 'var(--text-primary)', fontWeight: '600' }}>
+                              👤 ক্রেতা: {sale.customer_name || 'সাধারণ ক্রেতা'} {sale.customer_phone ? <span style={{ color: 'var(--text-muted)', fontWeight: 'normal', fontSize: '0.8rem' }}>({sale.customer_phone})</span> : ''}
+                            </span>
                           </div>
-                          {due > 0 ? (
-                            <span className="badge danger" style={{ fontSize: '0.7rem' }}>বাকি ৳{due.toFixed(2)}</span>
-                          ) : (
-                            <span className="badge success" style={{ fontSize: '0.7rem' }}>পরিশোধিত</span>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {due > 0 ? (
+                              <span className="badge danger" style={{ fontSize: '0.8rem', fontWeight: 'bold' }}>
+                                🔴 বাকি: ৳{due.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="badge success" style={{ fontSize: '0.8rem' }}>
+                                🟢 পরিশোধিত
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.8rem', padding: '0.3rem 0.75rem', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
+                              onClick={() => handleViewInvoiceDetails(sale.id)}
+                            >
+                              <Eye size={14} /> রসিদ দেখুন
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Product Items Table */}
+                        <div style={{ padding: '0.5rem 0.85rem', overflowX: 'auto' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                            <thead>
+                              <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+                                <th style={{ textAlign: 'left', padding: '0.45rem 0.5rem' }}>পণ্যের বিবরণ</th>
+                                <th style={{ textAlign: 'center', padding: '0.45rem 0.5rem', width: '100px' }}>পরিমাণ</th>
+                                <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', width: '120px' }}>বিক্রয় দর</th>
+                                <th style={{ textAlign: 'right', padding: '0.45rem 0.5rem', width: '120px' }}>মোট টাকা</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sale.items && sale.items.length > 0 ? (
+                                sale.items.map((it, idx) => {
+                                  const itemTotal = parseFloat(it.selling_price || 0) * it.quantity;
+                                  return (
+                                    <tr key={idx} style={{ borderBottom: idx < sale.items.length - 1 ? '1px dashed rgba(255,255,255,0.06)' : 'none' }}>
+                                      <td style={{ padding: '0.5rem 0.5rem' }}>
+                                        <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{it.product_name}</span>
+                                        {it.product_brand && (
+                                          <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: 'var(--text-muted)', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px' }}>
+                                            {it.product_brand}
+                                          </span>
+                                        )}
+                                        {it.product_model && (
+                                          <span style={{ marginLeft: '4px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            ({it.product_model})
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td style={{ textAlign: 'center', padding: '0.5rem 0.5rem' }}>
+                                        <span style={{ fontWeight: 'bold', color: 'var(--accent-color)', backgroundColor: 'rgba(59, 130, 246, 0.12)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem' }}>
+                                          {it.quantity} টি
+                                        </span>
+                                      </td>
+                                      <td style={{ textAlign: 'right', padding: '0.5rem 0.5rem', color: 'var(--text-secondary)' }}>
+                                        ৳{parseFloat(it.selling_price || 0).toFixed(2)}
+                                      </td>
+                                      <td style={{ textAlign: 'right', padding: '0.5rem 0.5rem', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                        ৳{itemTotal.toFixed(2)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              ) : (
+                                <tr>
+                                  <td colSpan="4" style={{ padding: '0.75rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                    পণ্য বিবরণ পাওয়া যায়নি
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* Invoice Financial Summary Footer Strip */}
+                        <div style={{
+                          display: 'flex',
+                          justifyContent: 'flex-end',
+                          alignItems: 'center',
+                          gap: '1.25rem',
+                          flexWrap: 'wrap',
+                          padding: '0.65rem 1rem',
+                          backgroundColor: 'rgba(0, 0, 0, 0.18)',
+                          borderTop: '1px solid var(--border-color)',
+                          fontSize: '0.85rem'
+                        }}>
+                          {parseFloat(sale.discount || 0) > 0 && (
+                            <div style={{ color: 'var(--text-muted)' }}>
+                              ডিসকাউন্ট: <strong style={{ color: 'var(--warning)' }}>-৳{parseFloat(sale.discount).toFixed(2)}</strong>
+                            </div>
                           )}
-                        </div>
-                        <div className="card-body">
-                          <div className="detail-item">
-                            <span>ক্রেতা:</span>
-                            <strong>{sale.customer_name || 'সাধারণ ক্রেতা'} {sale.customer_phone ? `(${sale.customer_phone})` : ''}</strong>
+                          <div>
+                            সর্বমোট: <strong style={{ color: 'var(--accent-color)', fontSize: '0.95rem' }}>৳{parseFloat(sale.total_amount).toFixed(2)}</strong>
                           </div>
-                          <div className="detail-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>পণ্যসমূহ:</span>
-                            <div style={{ fontSize: '0.8rem', width: '100%' }}>
-                              {sale.items && sale.items.map((it, idx) => (
-                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: idx < sale.items.length - 1 ? '1px dashed var(--border-color)' : 'none' }}>
-                                  <span>• {it.product_name} {it.product_brand ? `[${it.product_brand}]` : ''}</span>
-                                  <strong style={{ color: 'var(--accent-color)' }}>{it.quantity}টি &times; ৳{parseFloat(it.selling_price || 0).toFixed(2)}</strong>
-                                </div>
-                              ))}
-                            </div>
+                          <div>
+                            পরিশোধ: <strong style={{ color: 'var(--success)' }}>৳{paid.toFixed(2)}</strong>
                           </div>
-                          <div className="price-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-                            <div className="price-box">
-                              <span className="price-label">সর্বমোট</span>
-                              <span className="price-value" style={{ color: 'var(--accent-color)' }}>৳{parseFloat(sale.total_amount).toFixed(2)}</span>
+                          {due > 0 && (
+                            <div>
+                              বাকি: <strong style={{ color: 'var(--danger)' }}>৳{due.toFixed(2)}</strong>
                             </div>
-                            <div className="price-box" style={{ borderLeft: '1px solid var(--border-color)' }}>
-                              <span className="price-label">পরিশোধ</span>
-                              <span className="price-value" style={{ color: 'var(--success)' }}>৳{paid.toFixed(2)}</span>
-                            </div>
-                            <div className="price-box" style={{ borderLeft: '1px solid var(--border-color)' }}>
-                              <span className="price-label">লাভ</span>
-                              <span className="price-value" style={{ color: parseFloat(sale.profit) >= 0 ? 'var(--success)' : 'var(--danger)' }}>৳{parseFloat(sale.profit).toFixed(2)}</span>
-                            </div>
+                          )}
+                          <div style={{ borderLeft: '1px solid var(--border-color)', paddingLeft: '1rem' }}>
+                            লাভ: <strong style={{ color: parseFloat(sale.profit) >= 0 ? 'var(--success)' : 'var(--danger)', fontSize: '0.95rem' }}>
+                              ৳{parseFloat(sale.profit).toFixed(2)}
+                            </strong>
                           </div>
-                        </div>
-                        <div className="card-actions">
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.8rem', width: '100%', padding: '0.4rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px' }}
-                            onClick={() => handleViewInvoiceDetails(sale.id)}
-                          >
-                            <Eye size={14} /> সম্পূর্ণ রসিদ দেখুন
-                          </button>
                         </div>
                       </div>
                     );
@@ -899,7 +921,7 @@ function Reports({ activeView }) {
               </>
             )}
 
-            <div className="form-actions" style={{ marginTop: '1.5rem' }}>
+            <div className="form-actions" style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
               <button type="button" className="btn btn-secondary" style={{ width: '100%' }} onClick={() => setShowDateSalesModal(false)}>
                 বন্ধ করুন
               </button>
