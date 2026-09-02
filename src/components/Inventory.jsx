@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Edit2, Trash2, X, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { matchSearch } from '../utils/searchHelper';
 
 const CATEGORIES = [
   'তার ও ক্যাবল (Cables & Wires)',
@@ -305,19 +306,31 @@ function Inventory({ activeView, userRole, userAllowedModules, initialSearchTerm
     new Set(products.map(p => p.brand).filter(b => b && b.trim() !== ''))
   ).sort();
 
-  // Filter products
-  const filteredProducts = products.filter(product => {
-    const matchesSearch = 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (product.brand && product.brand.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (product.model && product.model.toLowerCase().includes(searchTerm.toLowerCase()));
-      
-    const matchesCategory = selectedCategory === '' || product.category === selectedCategory;
-    const matchesBrand = selectedBrand === '' || product.brand === selectedBrand;
-    const matchesLowStock = !showLowStockOnly || product.stock_quantity <= product.reorder_level;
+  // Filter and rank products dynamically
+  const filteredProducts = products
+    .map(product => {
+      const { matched, score } = matchSearch(
+        [product.name, product.brand, product.model, product.category, product.id ? product.id.toString() : ''],
+        searchTerm
+      );
+      const matchesCategory = selectedCategory === '' || product.category === selectedCategory;
+      const matchesBrand = selectedBrand === '' || product.brand === selectedBrand;
+      const matchesLowStock = !showLowStockOnly || product.stock_quantity <= product.reorder_level;
 
-    return matchesSearch && matchesCategory && matchesBrand && matchesLowStock;
-  });
+      return {
+        product,
+        matched: matched && matchesCategory && matchesBrand && matchesLowStock,
+        score
+      };
+    })
+    .filter(item => item.matched)
+    .sort((a, b) => {
+      if (searchTerm.trim() && b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return 0;
+    })
+    .map(item => item.product);
 
   return (
     <div>

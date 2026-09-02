@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Search, Calendar, Landmark, AlertCircle, Edit2, Trash2, Eye, AlertTriangle, X, RefreshCw } from 'lucide-react';
+import { matchSearch, filterAndRankBySearch } from '../utils/searchHelper';
 
 function Purchases({ activeView, userRole }) {
   const [purchases, setPurchases] = useState([]);
@@ -444,40 +445,31 @@ function Purchases({ activeView, userRole }) {
     }
   };
 
-  // Filter purchase logs
+  // Filter purchase logs with multi-word search
   const filteredPurchases = purchases.filter(p => {
-    const term = searchTerm.trim().toLowerCase();
-    if (!term) return true;
-    const cleanTerm = term.replace(/^#/, '');
-
-    const invNo = (p.invoice_no || `PR-${p.id}`).toLowerCase();
-    const cleanInvNo = invNo.replace(/^#/, '');
-
-    const matchesSearch = 
-      invNo.includes(term) ||
-      cleanInvNo.includes(cleanTerm) ||
-      (p.product_name && p.product_name.toLowerCase().includes(term)) ||
-      (p.product_brand && p.product_brand.toLowerCase().includes(term)) ||
-      (p.product_model && p.product_model.toLowerCase().includes(term)) ||
-      (p.vendor_name && p.vendor_name.toLowerCase().includes(term)) ||
-      (p.product_category && p.product_category.toLowerCase().includes(term)) ||
-      p.id.toString().includes(cleanTerm);
-    return matchesSearch;
+    if (!searchTerm.trim()) return true;
+    const invNo = p.invoice_no || `PR-${p.id}`;
+    const { matched } = matchSearch(
+      [invNo, `#${invNo}`, p.product_name, p.product_brand, p.product_model, p.vendor_name, p.product_category, p.id ? p.id.toString() : ''],
+      searchTerm
+    );
+    return matched;
   });
 
   const selectedProduct = products.find(p => p.id.toString() === formData.product_id);
-  const filteredDropdownProducts = products.filter(p => {
-    if (p.is_discontinued) return false;
-    const text = `${p.name} ${p.brand || ''} ${p.model || ''}`.toLowerCase();
-    return text.includes(productSearchTerm.toLowerCase());
-  });
+  const activeProducts = products.filter(p => !p.is_discontinued);
+  const filteredDropdownProducts = filterAndRankBySearch(
+    activeProducts,
+    p => [p.name, p.brand, p.model, p.category, p.id ? p.id.toString() : ''],
+    productSearchTerm
+  );
 
   const selectedNewProduct = products.find(p => p.id.toString() === newItemData.product_id);
-  const filteredNewDropdownProducts = products.filter(p => {
-    if (p.is_discontinued) return false;
-    const text = `${p.name} ${p.brand || ''} ${p.model || ''}`.toLowerCase();
-    return text.includes(newItemSearchTerm.toLowerCase());
-  });
+  const filteredNewDropdownProducts = filterAndRankBySearch(
+    activeProducts,
+    p => [p.name, p.brand, p.model, p.category, p.id ? p.id.toString() : ''],
+    newItemSearchTerm
+  );
 
   // Group filtered purchases by invoice_no for Invoice view
   const groupedInvoices = filteredPurchases.reduce((acc, curr) => {

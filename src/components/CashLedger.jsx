@@ -13,6 +13,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import { matchSearch } from '../utils/searchHelper';
 
 function CashLedger({ activeView, userRole }) {
   const [summary, setSummary] = useState(null);
@@ -245,8 +246,7 @@ function CashLedger({ activeView, userRole }) {
     }
 
     const matchesSearch = !searchTerm.trim() || 
-      (t.description && t.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (t.reference_id && t.reference_id.toLowerCase().includes(searchTerm.toLowerCase()));
+      matchSearch([t.description, t.reference_id, t.id?.toString(), t.amount?.toString()], searchTerm).matched;
 
     return matchesType && matchesSource && matchesSearch;
   });

@@ -4,6 +4,7 @@ import {
   Check, Eye, Edit2, AlertTriangle, X, RefreshCw, DollarSign, Wallet, 
   Filter, CheckCircle, Clock 
 } from 'lucide-react';
+import { matchSearch, filterAndRankBySearch } from '../utils/searchHelper';
 
 function Sales({ activeView, userRole }) {
   const [activeSubTab, setActiveSubTab] = useState('pos'); // 'pos' or 'history'
@@ -479,42 +480,51 @@ function Sales({ activeView, userRole }) {
     }
   };
 
-  // Filter products and their active batches for picker
+  // Filter products and their active batches for picker with smart multi-word search
+  const scoredProducts = products
+    .map(p => {
+      const { matched, score } = matchSearch(
+        [p.name, p.brand, p.model, p.category, p.id ? p.id.toString() : ''],
+        searchTerm
+      );
+      return { product: p, matched, score };
+    })
+    .filter(item => item.matched)
+    .sort((a, b) => {
+      if (searchTerm.trim() && b.score !== a.score) {
+        return b.score - a.score;
+      }
+      return 0;
+    });
+
   const filteredBatches = [];
-  products.forEach(p => {
-    const term = searchTerm.toLowerCase();
-    const matchProduct = p.name.toLowerCase().includes(term) || 
-      (p.brand && p.brand.toLowerCase().includes(term)) || 
-      (p.model && p.model.toLowerCase().includes(term));
-      
-    if (matchProduct) {
-      if (p.batches && p.batches.length > 0) {
-        p.batches.forEach(b => {
-          filteredBatches.push({
-            id: p.id,
-            name: p.name,
-            brand: p.brand,
-            model: p.model,
-            selling_price: p.selling_price,
-            purchase_id: b.purchase_id,
-            purchase_price: b.purchase_price,
-            batch_qty: b.remaining_qty,
-            batch_desc: `${b.vendor_name || 'ক্রয়'} (${new Date(b.purchase_date).toLocaleDateString('bn-BD')} - কেনা: ৳${b.purchase_price})`
-          });
-        });
-      } else {
+  scoredProducts.forEach(({ product: p }) => {
+    if (p.batches && p.batches.length > 0) {
+      p.batches.forEach(b => {
         filteredBatches.push({
           id: p.id,
           name: p.name,
           brand: p.brand,
           model: p.model,
           selling_price: p.selling_price,
-          purchase_id: null,
-          purchase_price: p.purchase_price,
-          batch_qty: p.stock_quantity,
-          batch_desc: 'ডিফল্ট ব্যাচ'
+          purchase_id: b.purchase_id,
+          purchase_price: b.purchase_price,
+          batch_qty: b.remaining_qty,
+          batch_desc: `${b.vendor_name || 'ক্রয়'} (${new Date(b.purchase_date).toLocaleDateString('bn-BD')} - কেনা: ৳${b.purchase_price})`
         });
-      }
+      });
+    } else {
+      filteredBatches.push({
+        id: p.id,
+        name: p.name,
+        brand: p.brand,
+        model: p.model,
+        selling_price: p.selling_price,
+        purchase_id: null,
+        purchase_price: p.purchase_price,
+        batch_qty: p.stock_quantity,
+        batch_desc: 'ডিফল্ট ব্যাচ'
+      });
     }
   });
 
@@ -969,17 +979,11 @@ function Sales({ activeView, userRole }) {
               if (historyFilter === 'paid' && dueAmt > 0) return false;
 
               if (!historySearchTerm.trim()) return true;
-              const term = historySearchTerm.trim().toLowerCase();
-              const cleanTerm = term.replace(/^#/, '');
-
-              const invStr = `#${sale.id}`.toLowerCase();
-              const custName = (sale.customer_name || '').toLowerCase();
-              const custPhone = (sale.customer_phone || '').toLowerCase();
-
-              return invStr.includes(cleanTerm) ||
-                     sale.id.toString().includes(cleanTerm) ||
-                     custName.includes(term) ||
-                     custPhone.includes(term);
+              const { matched } = matchSearch(
+                [sale.id.toString(), `#${sale.id}`, sale.customer_name, sale.customer_phone],
+                historySearchTerm
+              );
+              return matched;
             });
 
             return (
@@ -1724,15 +1728,11 @@ function Sales({ activeView, userRole }) {
                             zIndex: 2020
                           }}>
                             {(() => {
-                              const term = editProductSearchTerm.trim().toLowerCase();
-                              const filtered = allProductsList.filter(p => {
-                                if (!term) return true;
-                                return (p.name || '').toLowerCase().includes(term) ||
-                                       (p.brand || '').toLowerCase().includes(term) ||
-                                       (p.model || '').toLowerCase().includes(term) ||
-                                       (p.category || '').toLowerCase().includes(term) ||
-                                       p.id.toString().includes(term);
-                              });
+                              const filtered = filterAndRankBySearch(
+                                allProductsList,
+                                p => [p.name, p.brand, p.model, p.category, p.id ? p.id.toString() : ''],
+                                editProductSearchTerm
+                              );
 
                               if (filtered.length === 0) {
                                 return (
