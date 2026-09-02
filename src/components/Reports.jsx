@@ -759,44 +759,41 @@ function Reports({ activeView }) {
                 })()}
 
                 {/* Sales Table (Desktop) */}
-                <div className="table-container desktop-only-view" style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                <div className="table-container desktop-only-view" style={{ maxHeight: '450px', overflowY: 'auto' }}>
                   <table className="data-table" style={{ fontSize: '0.85rem' }}>
                     <thead>
                       <tr>
-                        <th>ইনভয়েস</th>
-                        <th>সময়</th>
+                        <th style={{ width: '80px' }}>ইনভয়েস</th>
                         <th>ক্রেতার বিবরণ</th>
-                        <th>পণ্যসমূহ</th>
+                        <th>বিক্রিত পণ্যসমূহ (পরিমাণ ও দর)</th>
                         <th style={{ textAlign: 'right' }}>সর্বমোট</th>
                         <th style={{ textAlign: 'right' }}>পরিশোধ</th>
                         <th style={{ textAlign: 'center' }}>বাকি</th>
                         <th style={{ textAlign: 'right' }}>লাভ</th>
-                        <th style={{ textAlign: 'center' }}>একশন</th>
+                        <th style={{ textAlign: 'center', width: '60px' }}>একশন</th>
                       </tr>
                     </thead>
                     <tbody>
                       {dateSalesList.map(sale => {
-                        const time = new Date(sale.sale_date).toLocaleTimeString('bn-BD', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        });
                         const paid = parseFloat(sale.paid_amount !== null && sale.paid_amount !== undefined ? sale.paid_amount : sale.total_amount);
                         const due = parseFloat(sale.due_amount || 0);
 
                         return (
                           <tr key={sale.id}>
                             <td><strong>#{sale.id}</strong></td>
-                            <td style={{ color: 'var(--text-secondary)' }}>{time}</td>
                             <td>
                               <div><strong>{sale.customer_name || 'সাধারণ ক্রেতা'}</strong></div>
                               {sale.customer_phone && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sale.customer_phone}</div>}
                             </td>
                             <td>
-                              <div style={{ maxWidth: '200px', fontSize: '0.8rem' }}>
+                              <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                 {sale.items && sale.items.length > 0 ? (
                                   sale.items.map((it, idx) => (
-                                    <div key={idx} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                      • {it.product_name} {it.product_brand ? `[${it.product_brand}]` : ''} ({it.quantity}টি)
+                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '2px 0', borderBottom: idx < sale.items.length - 1 ? '1px dashed var(--border-color)' : 'none' }}>
+                                      <span>• {it.product_name} {it.product_brand ? `[${it.product_brand}]` : ''}</span>
+                                      <span style={{ whiteSpace: 'nowrap' }}>
+                                        <strong style={{ color: 'var(--accent-color)' }}>{it.quantity}টি</strong> &times; <strong>৳{parseFloat(it.selling_price || 0).toFixed(2)}</strong>
+                                      </span>
                                     </div>
                                   ))
                                 ) : (
@@ -839,10 +836,6 @@ function Reports({ activeView }) {
                 {/* Sales Cards (Mobile) */}
                 <div className="mobile-card-list-view">
                   {dateSalesList.map(sale => {
-                    const time = new Date(sale.sale_date).toLocaleTimeString('bn-BD', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    });
                     const paid = parseFloat(sale.paid_amount !== null && sale.paid_amount !== undefined ? sale.paid_amount : sale.total_amount);
                     const due = parseFloat(sale.due_amount || 0);
 
@@ -851,7 +844,6 @@ function Reports({ activeView }) {
                         <div className="card-header">
                           <div>
                             <strong>চালান: #{sale.id}</strong>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '0.5rem' }}>{time}</span>
                           </div>
                           {due > 0 ? (
                             <span className="badge danger" style={{ fontSize: '0.7rem' }}>বাকি ৳{due.toFixed(2)}</span>
@@ -864,11 +856,14 @@ function Reports({ activeView }) {
                             <span>ক্রেতা:</span>
                             <strong>{sale.customer_name || 'সাধারণ ক্রেতা'} {sale.customer_phone ? `(${sale.customer_phone})` : ''}</strong>
                           </div>
-                          <div className="detail-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                          <div className="detail-item" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
                             <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>পণ্যসমূহ:</span>
-                            <div style={{ fontSize: '0.8rem' }}>
+                            <div style={{ fontSize: '0.8rem', width: '100%' }}>
                               {sale.items && sale.items.map((it, idx) => (
-                                <div key={idx}>• {it.product_name} &times; {it.quantity} টি</div>
+                                <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: idx < sale.items.length - 1 ? '1px dashed var(--border-color)' : 'none' }}>
+                                  <span>• {it.product_name} {it.product_brand ? `[${it.product_brand}]` : ''}</span>
+                                  <strong style={{ color: 'var(--accent-color)' }}>{it.quantity}টি &times; ৳{parseFloat(it.selling_price || 0).toFixed(2)}</strong>
+                                </div>
                               ))}
                             </div>
                           </div>
